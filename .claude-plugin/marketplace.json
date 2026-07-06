@@ -1,12 +1,12 @@
 {
-  "name": "hypercore",
+  "name": "qq-ac",
   "owner": { "name": "surlej" },
-  "description": "surlej's personal hypercore plugin.",
+  "description": "surlej's personal qq-ac plugin.",
   "plugins": [
     {
-      "name": "hypercore",
+      "name": "qq-ac",
       "source": "./",
-      "description": "Curated skills + operating rules, with knowledge and session layers.",
+      "description": "Curated skills + operating rules, plus knowledge, session, and cockpit layers.",
       "version": "0.1.0"
     }
   ]
