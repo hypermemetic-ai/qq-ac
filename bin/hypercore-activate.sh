@@ -5,7 +5,7 @@
 #
 # What it does (idempotent; backs up every file it edits to *.hypercore.bak):
 #   1. NTM   : projects_base -> /home/qqp/projects        (~/.config/ntm/config.toml)
-#   2. Rail  : installs the destructive-git block hook    (~/.claude/hooks + settings.json)
+#   2. Hooks : git rail (block destructive git) + wip savepoint (Stop) (~/.claude/hooks + settings.json)
 #   3. Claude: yolo — permissions.defaultMode="bypassPermissions"  (~/.claude/settings.json)
 #   4. Codex : yolo — approval_policy="never", sandbox_mode="danger-full-access" (~/.codex/config.toml)
 #   5. Commit + push both repos (meeting-reviewer: hypercore-layer files ONLY; your src/tests stay uncommitted)
@@ -36,11 +36,14 @@ say "1/5  NTM projects_base -> /home/qqp/projects"
 set_toml_top projects_base '"/home/qqp/projects"' "$HOME/.config/ntm/config.toml"
 echo "     set in ~/.config/ntm/config.toml"
 
-say "2/5  git safety rail (global hook)"
+say "2/5  global hooks (git rail + wip savepoint)"
 mkdir -p "$HOME/.claude/hooks"
 cp "$HC/skills/git-guardrails-claude-code/scripts/block-dangerous-git.sh" "$HOME/.claude/hooks/block-dangerous-git.sh"
 chmod +x "$HOME/.claude/hooks/block-dangerous-git.sh"
 echo "     installed ~/.claude/hooks/block-dangerous-git.sh"
+ln -sfn "$HC/bin/hc-wip-snapshot.sh" "$HOME/.claude/hooks/hc-wip-snapshot.sh"
+mkdir -p "$HOME/.local/bin"; ln -sfn "$HC/bin/hc-wip" "$HOME/.local/bin/hc-wip"
+echo "     linked wip savepoint + hc-wip (recover: hc-wip list|diff|branch <name>)"
 
 say "3/5  Claude Code yolo + wire the rail into ~/.claude/settings.json"
 bak "$HOME/.claude/settings.json"
@@ -57,8 +60,12 @@ arr = d.setdefault("hooks", {}).setdefault("PreToolUse", [])
 present = any(e.get("matcher") == "Bash" and any(x.get("command", "").endswith("block-dangerous-git.sh") for x in e.get("hooks", [])) for e in arr)
 if not present:
     arr.append({"matcher": "Bash", "hooks": [{"type": "command", "command": hook}]})
+wip = os.path.expanduser("~/.claude/hooks/hc-wip-snapshot.sh")
+stop = d.setdefault("hooks", {}).setdefault("Stop", [])
+if not any(any("hc-wip-snapshot" in x.get("command", "") for x in e.get("hooks", [])) for e in stop):
+    stop.append({"hooks": [{"type": "command", "command": wip}]})
 json.dump(d, open(p, "w"), indent=2)
-print("     permissions.defaultMode=bypassPermissions + PreToolUse Bash rail wired")
+print("     bypassPermissions + PreToolUse rail + Stop wip savepoint wired")
 PY
 
 say "4/5  Codex yolo -> ~/.codex/config.toml"

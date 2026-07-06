@@ -67,6 +67,10 @@ Support, any time: `research` (delegated, cited investigation → `research/`);
   plus live visibility for your partner.
 - **Undo is `git revert`** to the last green commit — forward and clean, never
   `reset --hard` (the rail blocks it). Commit-on-green is what makes revert cheap.
+- **In-flight work is never lost.** A `Stop` hook snapshots the working tree to
+  `refs/wip/<branch>` every idle — the un-green counterpart to commit-on-green,
+  and non-destructive (never touches HEAD, the index, or `main`). Recover with
+  `hc-wip list | diff | branch <name>`.
 - **Isolation on demand** — serial work runs in the main tree on a branch; fan out
   parallel agents and each gets its own `ntm worktree` (stronger than file locks for
   independent tasks; keep `ntm lock` for the shared-file case).
