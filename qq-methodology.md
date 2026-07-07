@@ -71,8 +71,8 @@ Support, any time: `research` (delegated, cited investigation → `research/`);
 per-repo, never an LLM call. The Claude Code status line reads it (`qq-phase
 render`, merging the gate's own `no-mistakes axi status` steps), so loop position
 and pipeline position show as one. Orchestrate's loop is the first producer; any
-background skill can stamp the same surface with a free-form phase
-(`capturing → researching → done`).
+background skill can stamp the same surface with free-form phases (e.g.
+`capturing`, `researching`) and mark completion with `qq-phase done`.
 
 ## Git — how work lands
 - **Commit on green.** A commit is a claim: commit only what

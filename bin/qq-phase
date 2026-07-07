@@ -33,7 +33,10 @@ if [ "$cmd" = "render" ]; then
   fi
   BRANCH="$branch" FILE="$file" GATE_OUT="$gate_out" python3 - <<'PY'
 import json, os
-st = json.load(open(os.environ["FILE"]))
+try:                                    # never error: a malformed state file renders as nothing,
+    st = json.load(open(os.environ["FILE"]))   # same as the missing-file / not-a-repo cases
+except Exception:
+    raise SystemExit(0)
 branch = os.environ.get("BRANCH") or st.get("branch") or ""
 phase  = st.get("phase", "idle")
 status = st.get("status", "working")
