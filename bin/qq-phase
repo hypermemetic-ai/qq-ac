@@ -125,7 +125,7 @@ fi
 mkdir -p "$dir"
 now=$(date +%s)
 
-PHASE="$phase" DETAIL="$detail" TASK="$task" STATUS="$status" GATE_ID="$gate_id" \
+PHASE="$phase" DETAIL="$detail" TASK="$task" STATUS="$status" GATE="$gate" GATE_ID="$gate_id" \
 BRANCH="$branch" NOW="$now" FILE="$file" python3 - <<'PY'
 import json, os, tempfile
 
@@ -166,11 +166,20 @@ st["total"] = 7
 st["branch"] = os.environ["BRANCH"]
 st["updated_at"] = int(os.environ["NOW"])
 
-for key, env in (("detail", "DETAIL"), ("task", "TASK"),
-                 ("status", "STATUS"), ("gate_run_id", "GATE_ID")):
+for key, env in (("detail", "DETAIL"), ("task", "TASK"), ("status", "STATUS")):
     v = os.environ.get(env, "")
     if v:
         st[key] = v
+
+# gate id: an attach (--gate/gate) stores a live run id; an attach that comes back
+# empty (daemon timeout/absent, or no active run) CLEARS any stale id so render
+# stops polling the daemon. A call that does not attach leaves the id untouched.
+if os.environ.get("GATE") == "1":
+    live = os.environ.get("GATE_ID", "")
+    if live:
+        st["gate_run_id"] = live
+    else:
+        st.pop("gate_run_id", None)
 
 st.setdefault("status", "working")
 
