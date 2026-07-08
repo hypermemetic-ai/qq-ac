@@ -1,7 +1,7 @@
 ---
 id: TASK-13
 title: Adopt the fire-and-forget gate consent model
-status: Done
+status: In Progress
 assignee: []
 created_date: '2026-07-08 17:12'
 labels: []
@@ -17,7 +17,7 @@ Operator decision 2026-07-08 (grilled end-to-end): the gate experience must be m
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Landing procedure in methodology + finishing skill names axi run --intent and the relay protocol
-- [ ] #2 auto_fix.review and ignore_patterns effective on this landing's own gate run
+- [x] #1 Landing procedure in methodology + finishing skill names axi run --intent and the relay protocol (evidence: qq-methodology.md "The landing agent owns the run" and skills/finishing-a-development-branch/SKILL.md Option 1 in this branch diff)
+- [x] #2 auto_fix.review and ignore_patterns effective on this landing's own gate run (evidence: .no-mistakes.yaml config applied here; NM-001 entered the auto-fix loop and was fixed without parking)
 - [ ] #3 ci-step duration on v1.34 measured and recorded on this task
 <!-- AC:END -->
