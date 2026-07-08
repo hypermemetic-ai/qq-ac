@@ -47,5 +47,9 @@ parents=()
 [ -n "$head" ] && parents+=(-p "$head")
 [ -n "$prev" ] && parents+=(-p "$prev")
 commit=$(printf '%s\n' "$msg" | git commit-tree "$tree" "${parents[@]}")
-git update-ref "$ref" "$commit"
+# Compare-and-swap: only move the ref if it still points where we read it
+# (zero-oid = "must not exist"). Two sessions in one tree can race this hook;
+# the loser's snapshot is superseded moments later and must never fail a Stop.
+zero=$(printf "%${#commit}s" "" | tr ' ' '0')
+git update-ref "$ref" "$commit" "${prev:-$zero}" 2>/dev/null || true
 exit 0

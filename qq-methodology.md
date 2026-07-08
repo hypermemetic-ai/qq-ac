@@ -99,7 +99,10 @@ per-repo, never an LLM call. The Claude Code status line reads it (`qq-phase
 render`, merging the gate's own `no-mistakes axi status` steps), so loop position
 and pipeline position show as one. Orchestrate's loop is the first producer; any
 background skill can stamp the same surface with free-form phases (e.g.
-`capturing`, `researching`) and mark completion with `qq-phase done`.
+`capturing`, `researching`) and mark completion with `qq-phase done`. Producers
+stamp concurrently without clobbering: each writes its own slot (`--producer
+<id>`, default `main`) and `render` shows every active slot — one producer
+finishing never resets another's state.
 
 ## Git — how work lands
 - **Commit on green.** A commit is a claim: commit only what
@@ -177,5 +180,7 @@ blocked in herdr; the `qq-phase` status line shows the gate step.
 
 Skills are linked from qq, vendored from MIT sources or authored for qq; see qq's
 `SKILLS-ATTRIBUTION.md`. The git rail runs as an always-on hook that blocks
-force-push, `reset --hard`, `clean -fd`, `git branch -D`, and history rewrites
-before they execute.
+force-push, `reset --hard`, `clean -fd`, `git branch -D`, remote branch deletion,
+`reflog expire`, `update-ref -d`, and history rewrites before they execute —
+argv-aware, so a command that merely mentions a dangerous phrase in quoted prose
+is not blocked.

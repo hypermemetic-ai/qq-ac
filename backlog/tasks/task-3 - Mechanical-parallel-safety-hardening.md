@@ -1,10 +1,10 @@
 ---
 id: TASK-3
 title: Mechanical parallel-safety hardening
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-07-08 14:41'
-updated_date: '2026-07-08 20:46'
+updated_date: '2026-07-08 21:02'
 labels: []
 dependencies: []
 priority: high
@@ -19,6 +19,12 @@ Audit ideas/05 Part 2 items 2-4: .qq/state.json producer slots (--producer keyed
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Two producers can stamp qq-phase concurrently without clobbering
-- [ ] #2 Rail no longer blocks benign commands that merely mention dangerous phrases
+- [x] #1 Two producers can stamp qq-phase concurrently without clobbering
+- [x] #2 Rail no longer blocks benign commands that merely mention dangerous phrases
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Landed from chore/task-3-rail-notes. qq-phase: per-producer slots under producers{} (--producer, default main), flock-serialized read-modify-write, per-slot fresh-run reset and gate id, multi-slot render, legacy-shape migration. qq-wip-snapshot: update-ref is now CAS (new old) + never fails the Stop hook. Rail: rewritten argv-aware (tokenize → simple commands → inspect actual git argv, following wrappers and sh -c; conservative whole-line fallback for unparseable input); added push --delete/-d/:branch, reflog expire, update-ref -d, push +refspec; 57-case table at skills/git-guardrails-claude-code/scripts/test-block-dangerous-git.sh; installed copy at ~/.claude/hooks synced. Codex-resume scoping deliberately excluded — folded into TASK-8.
+<!-- SECTION:NOTES:END -->
