@@ -771,6 +771,14 @@ def long_value_flag(args, name):
             return True
     return False
 
+def long_exact_flag(args, name):
+    for t in args:
+        if t == "--":
+            break
+        if t == name:
+            return True
+    return False
+
 def short_flag(args, ch):
     for t in args:
         if t == "--":
@@ -778,6 +786,13 @@ def short_flag(args, ch):
         if re.match(r"^-[A-Za-z]+$", t) and ch in t[1:]:
             return True
     return False
+
+def push_force_flag(args):
+    return (
+        long_exact_flag(args, "--force") or
+        short_flag(args, "f") or
+        long_value_flag(args, "--force-with-lease")
+    )
 
 def git_config_at(args, i):
     t = args[i]
@@ -934,9 +949,9 @@ def analyze_git(args, depth):
         return
     rest = args[i:]
     if sub == "push":
-        if long_flag(rest, "--force") or short_flag(rest, "f"):
+        if push_force_flag(rest):
             block("'git push --force' (force-push)")
-        if long_flag(rest, "--mirror"):
+        if long_exact_flag(rest, "--mirror"):
             block("'git push --mirror' (force-push)")
         if long_flag(rest, "--delete") or short_flag(rest, "d") or long_value_flag(rest, "--prune"):
             block("'git push --delete' (remote branch deletion)")
