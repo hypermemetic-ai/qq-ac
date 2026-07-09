@@ -86,7 +86,7 @@ the reaper stays silent to preserve the one-line ack.
   none, claim `NN` with the same O_EXCL loop below, define `SLUG` from the
   snapshot gist, write `ideas/$NN-$SLUG.md` with header status `parked`,
   Original, and Sharpened only, add the `#$NN` README pointer, then stamp
-  `qq-phase parked --producer idea-$NN --status done --detail "ideas/$NN-$SLUG.md"` —
+  `qq-phase parked --producer idea-$NN --status done --detail "ideas/$NN-$SLUG.md" >/dev/null` —
   no brief, no spawn. The file lands before the stamp. The slot shows the
   parked signal until the next capture reaps it.
 
@@ -120,7 +120,8 @@ Use the same `$root` resolved above for every path in this section.
    Take the working title mechanically from the operator's own words —
    sharpening starts only after this write exists on disk. The stamp is a
    signal; the file is the thought, and the thought lands first.
-3. Stamp `qq-phase capturing --producer idea-$NN`.
+3. Stamp `qq-phase capturing --producer idea-$NN >/dev/null`. The status line
+   is the only place a main-session stamp is allowed to speak.
 4. Sharpen in place: add the remaining sections of the template (Sharpened
    plus the two researcher placeholders) and set the header status to
    `researching`. The title may be sharpened in place; never rename the file.
@@ -185,6 +186,8 @@ Use the same `$root` resolved above for every path in this section.
 
 7. Spawn it detached:
 
+   From a Claude cockpit:
+
    ```bash
    brief="$root/.qq/idea-brief-$NN.md"
    log="$root/.qq/idea-research-$NN.log"
@@ -208,6 +211,10 @@ Use the same `$root` resolved above for every path in this section.
    From a Codex cockpit:
 
    ```bash
+   brief="$root/.qq/idea-brief-$NN.md"
+   log="$root/.qq/idea-research-$NN.log"
+   log_rel=".qq/idea-research-$NN.log"
+   producer="idea-$NN"
    setsid bash -c '
      cd "$1" || exit 1
      prompt="$(cat "$2")"
