@@ -1,0 +1,138 @@
+#!/usr/bin/env bash
+# qq-board — compact kanban for the cockpit: bare ids, consonant-skeleton labels.
+#
+# Backlog.md's own board spends a card's width on "TASK-x - Full title…" although
+# the prefix carries no information when task is the only type — and task_prefix
+# is permanent after `backlog init`, so the ids themselves can't be shortened.
+# This wrapper renders the dense read-only view instead: one row per task,
+# `<id> <abbr>` where abbr is the first significant title word, disemvoweled
+# (keep the first letter, drop vowels, collapse repeats, truncate to 6). Prior
+# art: tracker key schemes (bare #N when there is a single project), tmux
+# window-name truncation, classic consonant-skeleton abbreviation. The
+# interactive TUI stays available as `backlog board`.
+#
+#   qq-board                     render the board once
+#   qq-board --watch             auto-refresh loop (QQ_BOARD_INTERVAL, default 5s)
+#   qq-board pane [--direction right|down] [--ratio F]
+#                                open as a herdr UTILITY pane — plain
+#                                split + send-text, never `herdr agent start`,
+#                                so it does not register in the agents sidebar
+set -euo pipefail
+
+render() {
+  # statuses come from backlog's config so empty columns still show, in order;
+  # the list output travels via env because the heredoc already owns stdin
+  QQ_DATA=$(backlog task list --plain 2>/dev/null) QQ_ROOT="$1" python3 - <<'PY'
+import os, re, sys
+
+STOP = {"the", "a", "an", "to", "of", "and", "or", "for", "in", "on", "with",
+        "via", "vs", "it", "its", "is", "are", "what", "how",
+        "add", "make", "kill", "use", "get", "set", "fix", "do", "run", "new"}
+
+def abbrev(title):
+    words = [w.replace("-", "").lower()
+             for w in re.findall(r"[A-Za-z][A-Za-z0-9-]*", title)]
+    word = next((w for w in words if w not in STOP), words[0] if words else "?")
+    if len(word) <= 4:
+        return word
+    rest = re.sub(r"[aeiou]", "", word[1:])
+    rest = re.sub(r"(.)\1+", r"\1", rest)
+    return (word[0] + rest)[:6]
+
+# configured column order; sections found in the list output are the fallback
+statuses = []
+try:
+    cfg = open(os.path.join(os.environ["QQ_ROOT"], "backlog", "config.yml")).read()
+    m = re.search(r"^statuses:\s*\[(.*)\]", cfg, re.M)
+    if m:
+        statuses = [s.strip().strip('"\'') for s in m.group(1).split(",")]
+except OSError:
+    pass
+
+cols = {s: [] for s in statuses}
+current = None
+for line in os.environ.get("QQ_DATA", "").splitlines():
+    sec = re.match(r"^(\S.*):$", line)
+    if sec:
+        current = sec.group(1)
+        cols.setdefault(current, [])
+        continue
+    item = re.match(r"^\s+(?:\[(\w+)\]\s+)?\S+?-(\d+(?:\.\d+)*)\s+-\s+(.*)$", line)
+    if item and current is not None:
+        prio, tid, title = item.groups()
+        cols[current].append((tid, abbrev(title), (prio or "").upper()))
+
+color = os.environ.get("QQ_BOARD_COLOR") == "1" or sys.stdout.isatty()
+C = (lambda code, s: f"\033[{code}m{s}\033[0m") if color else (lambda code, s: s)
+PRIO = {"HIGH": "31", "MEDIUM": "33", "LOW": "2"}
+
+idw = max((len(t[0]) for c in cols.values() for t in c), default=1)
+names = list(cols)
+widths, cells = [], []
+for name in names:
+    rows = [f"{tid:>{idw}} {abbr}" for tid, abbr, _ in cols[name]]
+    widths.append(max([len(name) + len(str(len(rows))) + 1] + [len(r) for r in rows]))
+    cells.append(rows)
+
+out = []
+head = []
+for name, w in zip(names, widths):
+    label = f"{name} {len(cols[name])}"
+    head.append(C("1", name) + C("2", f" {len(cols[name])}") + " " * (w - len(label)))
+out.append("  ".join(head).rstrip())
+for i in range(max((len(r) for r in cells), default=0)):
+    row = []
+    for name, rows, w in zip(names, cells, widths):
+        if i < len(rows):
+            code = "2" if name == "Done" else PRIO.get(cols[name][i][2], "")
+            row.append((C(code, rows[i]) if code else rows[i]) + " " * (w - len(rows[i])))
+        else:
+            row.append(" " * w)
+    out.append("  ".join(row).rstrip())
+print("\n".join(out))
+PY
+}
+
+root=$(git rev-parse --show-toplevel 2>/dev/null) || { echo "qq-board: not in a git repo" >&2; exit 1; }
+[ -d "$root/backlog" ] || { echo "qq-board: no backlog/ registry at $root" >&2; exit 1; }
+
+case "${1:-}" in
+  "")
+    render "$root"
+    ;;
+  --watch)
+    interval="${QQ_BOARD_INTERVAL:-5}"
+    export QQ_BOARD_COLOR=1
+    trap 'printf "\033[?25h"' EXIT
+    printf '\033[?25l\033[2J'
+    while :; do
+      buf=$(render "$root" || true)
+      printf '\033[H%s\n\033[0J' "$buf"
+      sleep "$interval"
+    done
+    ;;
+  pane)
+    shift
+    dir="right"; ratio="0.18"
+    while [ $# -gt 0 ]; do
+      case "$1" in
+        --direction) dir="${2:-right}"; shift 2 ;;
+        --ratio)     ratio="${2:-0.18}"; shift 2 ;;
+        *) echo "unknown arg: $1" >&2; exit 1 ;;
+      esac
+    done
+    out=$(herdr pane split --current --direction "$dir" --ratio "$ratio" --no-focus --cwd "$root")
+    pid=$(printf '%s' "$out" | grep -oE '"pane_id":"[^"]+"' | head -1 | cut -d'"' -f4)
+    [ -n "$pid" ] || { echo "qq-board: pane split failed: $out" >&2; exit 1; }
+    herdr pane rename "$pid" board >/dev/null
+    sleep 1  # let the pane's shell come up before typing into it
+    self=$(readlink -f "$0")
+    herdr pane send-text "$pid" "exec \"$self\" --watch" >/dev/null
+    herdr pane send-keys "$pid" Enter >/dev/null
+    echo "board pane: $pid (utility pane — not in the agents sidebar)"
+    ;;
+  *)
+    echo "usage: qq-board [--watch] | qq-board pane [--direction right|down] [--ratio F]" >&2
+    exit 1
+    ;;
+esac
