@@ -162,16 +162,18 @@ Verified from no-mistakes v1.34.0 source (cloned at tag) and docs:
   provider enum is openrouter/baseten/fireworks/openai/openai-compatible/anthropic
   — every one keyed via env var (confirmed in the installed package:
   `PROVIDER_CONFIGS[].apiKeyEnvKey`; `needsCredentialSetup()` even wants
-  `LANGSMITH_API_KEY` defined). Subscription-CLI backends exist only as open
-  issues (#59, #106, #120, #156, #225) and unmerged PRs (#76 and #181 open,
-  #188 closed; #205 "Add self-managed Codex OAuth provider" opened 2026-07-08,
+  `LANGSMITH_API_KEY` defined). Subscription-compatible backends exist only as
+  open issues (#59, #106, #120, #156, #225) and unmerged PRs (#76 and #181
+  open, #188 closed; #151 opened 2026-07-06 and #205 opened 2026-07-08, both
   open non-draft) — nothing merged on main. No roadmap commitment found.
-  [high, verified; #205 surfaced by the gate's review and re-verified via gh]
-  Note on #205: it implements a self-managed PKCE flow calling the Codex
-  Responses backend *directly* from OpenWiki — i.e. a non-Codex client on
-  ChatGPT-sub credentials, the same shape Anthropic prohibits on its side and
-  a weaker ToS position than driving the official `codex` binary. Even if it
-  merges, it does not obviously beat option 1.
+  [high, verified; #151/#205 surfaced by the gate's review and re-verified via
+  gh]
+  Note on #151/#205: both add ChatGPT/Codex OAuth but call the Codex Responses
+  backend *directly* from OpenWiki (via LangChain `ChatOpenAI` in #151, via a
+  self-managed provider in #205) — i.e. a non-Codex client on ChatGPT-sub
+  credentials, the same shape Anthropic prohibits on its side and a weaker ToS
+  position than driving the official `codex` binary. Even if either merges, it
+  does not obviously beat option 1.
 - **CodeWiki (FSoft-AI4Code)**: the strongest existing tool for this constraint —
   `CAW_PROVIDERS = {"claude-code", "codex"}` routes every LLM call through the
   local authenticated CLI binaries. But it writes its own `docs/` structure, not
@@ -195,9 +197,10 @@ Verified from no-mistakes v1.34.0 source (cloned at tag) and docs:
 | 3 | CodeWiki (claude-code/codex providers) | Same CLI primitives | Same | Good, but `docs/` format ≠ `openwiki/`; wholesale adoption | Rejected — format break |
 | 4 | openwiki-cc / openwiki-for-claude-code / deepwiki-skill | `claude -p` envelope | Claude-sub quota | OpenWiki-format capable | Rejected — wrong sub, third-party churn |
 | 5 | OpenWiki CLI + API key (status quo script) | Fine, but violates the operator constraint | Out-of-pocket API spend | Good | **Rejected** — the constraint |
-| 6 | OpenWiki CLI + Claude-sub OAuth shim | The prohibited third-party-routing shape | — | — | Rejected — ToS |
-| 7 | Local model via openai-compatible/ollama | Fine (no keys) | Hardware | Documented quality failures at this size | Rejected — quality evidence negative |
-| 8 | Steer no-mistakes document step at openwiki/ | n/a | n/a | n/a | Rejected — no config surface exists (verified in source) |
+| 6 | OpenWiki CLI + ChatGPT/Codex OAuth provider (#151/#205 shape) | Non-Codex client calls Codex backend directly; weaker than `codex` binary | ChatGPT-sub quota | Good if merged | Rejected until vendor-blessed/ToS-clear |
+| 7 | OpenWiki CLI + Claude-sub OAuth shim | The prohibited third-party-routing shape | — | — | Rejected — ToS |
+| 8 | Local model via openai-compatible/ollama | Fine (no keys) | Hardware | Documented quality failures at this size | Rejected — quality evidence negative |
+| 9 | Steer no-mistakes document step at openwiki/ | n/a | n/a | n/a | Rejected — no config surface exists (verified in source) |
 
 ## Implementation re-plan (for the follow-up task)
 
@@ -210,10 +213,12 @@ The engine decision converts TASK-7's implementation half into:
    `openwiki/.last-update.json` + `gitHead..HEAD` diff protocol.
 2. Rewrite `bin/qq-openwiki-refresh` to call
    `codex exec --sandbox workspace-write --cd <repo> --skip-git-repo-check -o <log>
-   "$(prompt)"` — the sandbox flag is mandatory: non-interactive codex defaults to
-   a read-only sandbox (developers.openai.com/codex/noninteractive), so an
-   unflagged call could never write `openwiki/`; do not rely on a machine's
-   permissive `~/.codex/config.toml`. Keep
+   "$(cat <prompt-file>)" < /dev/null` — the sandbox flag is mandatory:
+   non-interactive codex defaults to a read-only sandbox
+   (developers.openai.com/codex/noninteractive), so an unflagged call could
+   never write `openwiki/`; the stdin redirect is mandatory because raw
+   `codex exec "<prompt>"` can block forever while reading inherited stdin.
+   Do not rely on a machine's permissive `~/.codex/config.toml`. Keep
    every guard (no `openwiki/` → skip; no `codex` binary or no auth → warn+skip;
    snapshot/restore on failure; warn-don't-block) and re-keying the "is it
    configured" check from `~/.openwiki/.env` to codex auth presence
@@ -227,10 +232,10 @@ The engine decision converts TASK-7's implementation half into:
 
 Watch-fors recorded: OpenAI could tighten the CI/CD-auth-on-sub language (it is
 one docs page, not a ToS commitment); OpenWiki upstream may merge a
-subscription backend (issues #59/#156, PR #205's self-managed Codex OAuth
-provider — re-evaluate if one merges, weighing #205's direct-backend ToS caveat);
-the Anthropic Agent-SDK credits pause may resolve into a cleaner written rule for
-`claude -p`-class automation.
+subscription backend (issues #59/#156, PR #151's ChatGPT-login provider and
+PR #205's self-managed Codex OAuth provider — re-evaluate if one merges, weighing
+the direct-backend ToS caveat); the Anthropic Agent-SDK credits pause may resolve
+into a cleaner written rule for `claude -p`-class automation.
 
 ## Verification note
 
@@ -244,7 +249,7 @@ at pinned tags, PR/issue states, the RepoDoc paper). Verdicts:
 | 2 | Limit exhaustion → credits/blocking; no written prohibition on private scripted sub use | WEAKENED (holds, minus any "no bans" guarantee) |
 | 3 | `claude -p` headless/CI on subs documented incl. `CLAUDE_CODE_OAUTH_TOKEN`; written ban targets third-party credential routing | CONFIRMED |
 | 4 | no-mistakes document step unsteerable; `commands.format` in push step pre-commit; failures warn; default-branch trust rule | CONFIRMED |
-| 5 | OpenWiki upstream API-key-only; sub/CLI PRs unmerged (#76/#181 open, #188 closed) | CONFIRMED (PR states corrected) |
+| 5 | OpenWiki upstream API-key-only; sub-compatible PRs unmerged (#76/#151/#181/#205 open, #188 closed) | CONFIRMED (PR states corrected) |
 | 6 | CodeWiki genuinely routes via local `claude`/`codex` CLIs; writes `docs/` not `openwiki/` | CONFIRMED |
 | 7 | RepoDoc: −73% time / −77% tokens / +10.2% update recall for incremental maintenance, same backbone | CONFIRMED |
 | 8 | OpenWiki update prompt is surgical/diff-driven; MIT permits prompt reuse (with notice) | CONFIRMED |
