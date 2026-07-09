@@ -3,7 +3,7 @@
 _Banked 2026-07-07. Status: audit complete (three parallel readers + main-session
 verification of every load-bearing claim); sequencing proposed. Update 2026-07-08:
 TASK-3 landed the qq-phase, WIP-ref, and rail hardening from Part 2; Codex resume
-scoping moved to TASK-8.
+scoping moved to TASK-8; TASK-5 built `compound`; TASK-6 built `/idea`.
 Trigger: operator asked "make the whole workflow parallel safe" + "audit the whole
 methodology for coherence, soundness, simplification — then see where concurrency
 fits in."_
@@ -299,8 +299,9 @@ questions in the research file.
 4. **The instruction layer**: add §Parallel operation to `qq-methodology.md`
    (tree ownership, shared-surface conventions, global-config rule) and thread
    the one-line rules into the affected skills.
-5. **Then build ideas #2 (`compound`) and #1 (`/idea`)** on the now-safe
-   substrate — #1 depends on the multi-producer fix in step 3.
+5. **Build ideas #2 (`compound`) and #1 (`/idea`)** on the now-safe
+   substrate — completed by TASK-5 and TASK-6 after the multi-producer fix in
+   step 3.
 
 Steps 2-4 are each a gate-sized branch. Step 1 is a decision, then a small
 removal branch + a new skill authored via `writing-skills`.

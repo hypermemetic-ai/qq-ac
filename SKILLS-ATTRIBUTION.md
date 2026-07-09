@@ -41,9 +41,9 @@ all vendored copies match HEAD at that tag except the deliberate divergences
 noted above. To re-check after an upstream release: fetch each skill's
 `SKILL.md` and diff against `skills/<name>/`.
 
-## Authored for qq (syntheses)
+## Authored for qq
 
-| skill | synthesized from | license |
+| skill | origin / synthesis | license |
 |---|---|---|
 | `research` | mattpocock `research` (shape) + Every researcher agents (source-craft) + [open-gsd/gsd-core](https://github.com/open-gsd/gsd-core) research guardrails | MIT |
 | `uat-signoff` | the human-UAT pattern of gsd `gsd-verify-work` ([open-gsd/gsd-core](https://github.com/open-gsd/gsd-core)), distilled runtime-free | MIT |

@@ -11,6 +11,8 @@ it its own `NN-slug.md` file in this folder and leave a one-line pointer here.
 This folder is the output surface of the `/idea` skill (`skills/idea/SKILL.md`):
 mid-session it captures a bare todo as a verbatim bullet, and anything
 researchable as an `NN-slug.md` a detached researcher then enriches in place.
+Bare `/idea` with no text parks a handoff-style snapshot of the current thread
+as an `NN-slug.md`; if there is nothing researchable, no researcher is spawned.
 
 ## Backlog
 

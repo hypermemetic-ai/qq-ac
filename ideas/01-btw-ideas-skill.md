@@ -14,9 +14,10 @@ eval-first per `writing-skills`; harness-extensibility question researched
 
 ## Finding
 
-No such skill exists in `skills/` (checked all 16). Closest prior art is the
-`research` skill (which this reuses) and this `ideas/` folder's own convention
-(README backlog + `NN-slug.md`). So: build it, on top of this scaffold.
+At capture time, no such skill existed in `skills/` (checked the then-16 skills).
+Closest prior art was the `research` skill (which this reuses) and this
+`ideas/` folder's own convention (README backlog + `NN-slug.md`). So: build it,
+on top of this scaffold.
 
 ## Native `/btw` already exists — reframe the idea around it (researched 2026-07-07)
 
@@ -65,8 +66,9 @@ thread switched to via `/agent` — not a returns-when-done background subagent)
 returns-when-done background-subagent-from-a-command, so the Codex build uses a
 **detached agent subprocess** —
 the wrapper in `skills/idea/SKILL.md` with `< /dev/null` (per idea #3) — that
-self-files to `ideas/`. Both harnesses share the `SKILL.md` model,
-so author once and link into both `~/.claude/skills` and `~/.codex/skills`.
+self-files to `ideas/`. Both harnesses share the `SKILL.md` model, but
+`bin/qq-link.sh` links only `~/.claude/skills` today; Codex invocation needs the
+follow-up `~/.codex/skills` linker.
 
 Sources: code.claude.com/docs/en/commands (`/btw`, `/fork`, `/branch`) ·
 developers.openai.com/codex/cli/slash-commands · github.com/openai/codex/issues/18884
@@ -98,8 +100,9 @@ stays at zero; the agent does the fleshing.
    `writing-plans` pointer) · date stamp.
 
 Output slots onto the existing convention: one-liners with no research → a
-Backlog bullet in `README.md`; anything with supporting data → its own
-`NN-slug.md` + a pointer bullet.
+Backlog bullet in `README.md`; bare session snapshots and anything with
+supporting data → their own `NN-slug.md` + a pointer bullet, with the researcher
+spawned only when the idea is researchable.
 
 ## Relationship to `handoff`
 
@@ -145,11 +148,11 @@ and *borrows from* `handoff` (to capture context) — it sits between them.
 
 ## Ready to take on
 
-Build via `writing-skills` (eval-first): the `idea` skill, and formalize this
-`ideas/` folder as its output surface. Index row goes under
-"Support, any time" in `CLAUDE.md`, alongside `research` / `handoff`.
+Built via `writing-skills` (eval-first) as `skills/idea/SKILL.md`, with this
+`ideas/` folder formalized as its output surface. The shared methodology imported
+by `CLAUDE.md` now has both the "Support, any time" reference and the skill-index
+row alongside `research` / `handoff`.
 
-Implementation note from the handoff analysis: start by having `idea`
-invoke/reference `handoff` for its session-snapshot / context-slot work. Factor a
-shared "compact live session for a cold reader" method only if the duplication
-actually bites.
+Implementation note from the handoff analysis: `idea` references `handoff` for
+its session-snapshot / context-slot work. Factor a shared "compact live session
+for a cold reader" method only if the duplication actually bites.
