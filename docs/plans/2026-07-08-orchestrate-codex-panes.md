@@ -4,11 +4,11 @@ _2026-07-08 · design for backlog **task-8** (idea #9). Decided 07-08: Codex is
 about to become the main driver, so Codex workers stop being second-class —
 they get their own herdr pane, like Claude workers, so there is **one worker
 model**. Mechanics smoke-tested 07-08 (scratch workspace): `herdr agent start …
--- codex` is auto-detected as agent `codex` with live idle/working state;
+-- codex` is auto-detected as agent `codex` with live idle/working/done state;
 `herdr agent send cx-<branch>` + `herdr pane send-keys <pane> Enter` delivers
 prompts after a brief read/settle before Enter; `herdr agent wait
-cx-<branch> --status idle` blocks until the turn ends; herdr captures the codex
-session id. This plan lands as its own gated branch **after**
+cx-<branch> --status idle` unblocks when Codex surfaces `done` at turn end;
+herdr captures the codex session id. This plan lands as its own gated branch **after**
 `feat/document-stack` merges._
 
 ## Goal
@@ -46,25 +46,30 @@ never the report of record (that stays file-based, below).
    --split right --no-focus -- codex`
    (same workspace as the run's tree; `herdr worktree create` first when
    fanning out). One worker per working tree, honoring tree ownership.
-2. Trust prompt: after start, `herdr agent read cx-<branch> --source visible`;
-   if the directory trust prompt is showing, `herdr pane send-keys <pane> Enter`
-   (option 1 is preselected). Long-term: pre-trust project roots in
-   `~/.codex/config.toml`.
+2. Startup prompts: after start, `herdr agent read cx-<branch> --source visible`;
+   if a prompt is showing, answer with `herdr pane send-keys`: directory trust →
+   `Enter` (option 1 preselected); update offer → skip it (don't change the tool
+   mid-run). Long-term: pre-trust project roots in `~/.codex/config.toml`.
 3. Handoff: write the brief to `.qq/handoffs/<n>-brief.md` (multi-line text
    must not ride `herdr agent send` — a newline submits early). Then
    `herdr agent send cx-<branch> "Execute .qq/handoffs/<n>-brief.md; when done
    write .qq/handoffs/<n>-report.md (what changed, files touched, how to
    verify)."`. Wait a couple seconds or read
    `herdr agent read cx-<branch> --source visible` until the text is in the
-   pane, then `herdr pane send-keys <pane> Enter`.
+   pane, then `herdr pane send-keys <pane> Enter`. If the agent stays idle,
+   `agent read` to check for an unsubmitted prompt and re-send Enter.
 4. Wait: `herdr agent wait cx-<branch> --status idle --timeout <generous>`;
-   on timeout, `herdr agent read cx-<branch>` for signs of life before declaring
-   it stuck. A worker parked on an approval prompt surfaces as blocked → read
-   the pane, answer or escalate to the owner.
+   Codex surfaces `done` at turn end, and the wait unblocks on that transition —
+   don't poll for a literal `idle`. If the status flickers mid-turn, wait twice a
+   few seconds apart before trusting it. On timeout, `herdr agent read
+   cx-<branch>` for signs of life before declaring it stuck. A worker parked on
+   an approval prompt surfaces as blocked → read the pane, answer or escalate to
+   the owner.
 5. Report-back is **file-based**: the conductor reads
    `.qq/handoffs/<n>-report.md`. Scrollback
-   (`herdr agent read cx-<branch>`) is debug/fallback only — never parse it as
-   the result of record.
+   (`herdr agent read cx-<branch>`) and the live stream (`herdr terminal session
+   observe cx-<branch>`) are debug/fallback only — never parse them as the result
+   of record.
 6. Repair loop: the pane session is alive — send the failing evidence as a
    follow-up message in the same pane. `codex exec resume --last` semantics
    (and its cross-worktree bleed hazard, audit Part 2.3) are deleted, not
@@ -126,10 +131,10 @@ only from this pilot's lessons (captured in slice 3).
 - Non-focused pane rendering: worked in the smoke test; re-verify under a
   real multi-hour build.
 - `herdr agent wait cx-<branch> --status idle` fidelity during codex sub-shell
-  activity: if idle flickers mid-turn, add a settle re-check (wait idle twice,
-  N s apart).
+  activity: Codex now surfaces `done` at turn end, but if state flickers
+  mid-turn, settle by waiting twice a few seconds apart.
 - ~~Codex resume-by-id flag name for dead panes~~ — confirmed 07-08:
-  `codex resume [SESSION_ID]` / `codex exec resume [SESSION_ID]`.
+  `codex resume [SESSION_ID]`.
 - Stacked slice branches: a later slice's PR shows the cumulative diff until
   its predecessor merges (merge commits preserve SHAs, so it self-corrects).
   Pilot lesson to watch, not a blocker.
