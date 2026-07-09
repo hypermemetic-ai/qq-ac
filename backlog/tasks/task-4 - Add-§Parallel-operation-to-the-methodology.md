@@ -1,10 +1,11 @@
 ---
 id: TASK-4
 title: Add §Parallel operation to the methodology
-status: To Do
-assignee: []
+status: In Progress
+assignee:
+  - task-4-parallel-operation
 created_date: '2026-07-08 14:41'
-updated_date: '2026-07-08 23:12'
+updated_date: '2026-07-09 00:28'
 labels:
   - parallel-ok
 dependencies:
