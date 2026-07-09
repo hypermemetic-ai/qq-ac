@@ -91,3 +91,11 @@ rewrites is indistinguishable, at the call site, from the clamp that validated.
 the unfixed code. A harness that passes both before and after has tested nothing;
 it is the same "plausible answer, exit 0" shape as the silent failures it was
 written to catch.
+
+**operator handoff** — A step the operator must perform because it is *reserved*,
+not because it was inconvenient: the rail blocks unmerged-branch deletion, the
+gate parks `ask-user` findings, a PR merge is a human click. The agent stages
+everything around it so the operator's part is one paste at a short path
+(`/tmp/qq-<verb>.sh`), non-interactive (no `read` — the `!` shell has no tty),
+dry-run by default, re-verifying its own preconditions at run time, and refusing
+on anything it does not recognise.
