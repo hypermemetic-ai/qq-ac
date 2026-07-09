@@ -1,11 +1,11 @@
 ---
 id: TASK-21
 title: Bank the 2026-07-08 parallel-wave lessons
-status: In Progress
+status: Done
 assignee:
   - task-21-bank-wave-lessons
 created_date: '2026-07-09 14:06'
-updated_date: '2026-07-09 14:07'
+updated_date: '2026-07-09 14:08'
 labels:
   - docs
   - parallel-ok
