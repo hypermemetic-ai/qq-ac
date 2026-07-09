@@ -108,9 +108,10 @@ it its own `NN-slug.md` file in this folder and leave a one-line pointer here.
   smoke-tested (see #6 file Part 4) and adopted — `backlog/` seeded with the
   live queue, `bin/qq-registry-check.sh` wired as the gate's test command,
   `bin/qq-openwiki-refresh` as its format command (guarded no-op until the
-  wiki exists). **Still open:** initial wiki generation is reframed as research
-  under the operator's sub-only / no-API-key constraint (backlog task-7); linked-repo rollout
-  (backlog task-9); the `code-graph` routing skill is **deferred by eval** —
+  wiki exists). **TASK-7 resolved the engine research:** the adopted path is a
+  codex-exec-driven, sub-only refresh plus one-time init; implementation is a
+  follow-up, and linked-repo rollout remains backlog task-9. The `code-graph`
+  routing skill is **deferred by eval** —
   the RED baseline (07-08) showed an unguided agent answers qq-scale
   relational queries correctly with `rg` alone, so per `writing-skills` no
   skill ships without an observed failure (backlog draft-1). The queue now
@@ -129,9 +130,10 @@ it its own `NN-slug.md` file in this folder and leave a one-line pointer here.
   one approach for every worker: own pane, sidebar visibility, reachable via
   #8's send/read/wait.
   ✅ **Mechanics smoke-tested (07-08):** `herdr agent start … -- codex` is
-  auto-detected as agent `codex` with live idle/working state; `send` + `pane
-  send-keys Enter` delivers prompts; `wait --status idle` blocks correctly; and
-  herdr captures the codex **session id**, which dissolves the `resume --last`
+  auto-detected as agent `codex` with live idle/working/done state plus blocked
+  prompts; `send` + a brief read/settle before `pane send-keys Enter` submits
+  prompts; `wait --status idle` unblocks when Codex surfaces `done`; and herdr
+  captures the codex **session id**, which dissolves the `resume --last`
   hazard. **Approved substrate (07-08):** tab-per-task topology, ~3 panes/tab
   cap, per-pane `--cwd` worktree affinity, read-only `herdr terminal session
   observe` for watch/debug only, and dead-pane recovery by explicit
@@ -141,7 +143,8 @@ it its own `NN-slug.md` file in this folder and leave a one-line pointer here.
   (07-08):** handoffs now use
   `cx-<branch>` worker panes, `.qq/handoffs/<n>-{brief,report}.md`, idle waits,
   file-based reports, in-pane repair, and explicit `codex resume <session-id>`
-  recovery for dead panes. Live e2e proof remains in task-8.2; design doc:
+  recovery for dead panes. TASK-8.2 captured the live e2e proof and residual
+  records check; TASK-8.3 banked the pilot lessons and closed the parent; design doc:
   [`docs/plans/2026-07-08-orchestrate-codex-panes.md`](../docs/plans/2026-07-08-orchestrate-codex-panes.md).
   _(2026-07-08)_
 - **#10 · Expand–contract for wide refactors** _(captured 07-08)._ mattpocock
@@ -151,3 +154,9 @@ it its own `NN-slug.md` file in this folder and leave a one-line pointer here.
   batches, contract the old form away. Deliberately not folded into
   `writing-plans` yet — nothing speculative; reach for it when a real wide
   refactor shows up. _(2026-07-08)_
+- **#11 · Slicing-pilot lessons for serial gated slices** →
+  [`06-slicing-pilot-lessons.md`](06-slicing-pilot-lessons.md).
+  ✅ **Banked from TASK-8 (07-08).** Parent + dependency-linked slice sub-tasks
+  work, but hand-built branch stacks delinearize under the gate; future
+  `writing-plans` / `executing-plans` guidance should land one slice PR at a
+  time, each re-driven after its predecessor reaches `main`. _(2026-07-08)_
