@@ -86,16 +86,15 @@ the reaper stays silent to preserve the one-line ack.
   none, claim `NN` with the same O_EXCL loop below, define `SLUG` from the
   snapshot gist, write `ideas/$NN-$SLUG.md` with header status `parked`,
   Original, and Sharpened only, add the `#$NN` README pointer, then stamp
-  `qq-phase capturing --producer idea-$NN` followed immediately by
-  `qq-phase done --producer idea-$NN --detail "ideas/$NN-$SLUG.md"` — no brief,
-  no spawn. The slot shows the parked signal until the next capture reaps it.
+  `qq-phase parked --producer idea-$NN --status done --detail "ideas/$NN-$SLUG.md"` —
+  no brief, no spawn. The file lands before the stamp. The slot shows the
+  parked signal until the next capture reaps it.
 
 ## Full path
 
 Use the same `$root` resolved above for every path in this section.
 
-1. Claim `NN` atomically, define `SLUG`, then stamp
-   `qq-phase capturing --producer idea-$NN`. Run this from `$root`:
+1. Claim `NN` atomically and define `SLUG`. Run this from `$root`:
 
    ```bash
    for n in $(seq -w 1 99); do
@@ -104,7 +103,6 @@ Use the same `$root` resolved above for every path in this section.
    done
    [ -n "${NN:-}" ] || { echo "no free idea number"; exit 1; }
    SLUG="<mechanical-kebab-slug-from-operator-words>"
-   qq-phase capturing --producer "idea-$NN"
    ```
 
    The claim marker, not the filename, makes the number exclusive — the file
@@ -120,14 +118,16 @@ Use the same `$root` resolved above for every path in this section.
    blocks of the template below — the `_Captured…_` header (status
    `capturing`) and the Original section, using the claimed number and slug.
    Take the working title mechanically from the operator's own words —
-   sharpening starts only after this write exists on disk.
-3. Sharpen in place: add the remaining sections of the template (Sharpened
+   sharpening starts only after this write exists on disk. The stamp is a
+   signal; the file is the thought, and the thought lands first.
+3. Stamp `qq-phase capturing --producer idea-$NN`.
+4. Sharpen in place: add the remaining sections of the template (Sharpened
    plus the two researcher placeholders) and set the header status to
    `researching`. The title may be sharpened in place; never rename the file.
    The finished shape:
 
    ```markdown
-   # <title — the operator's gist at capture, sharpened in step 3>
+   # <title — the operator's gist at capture, sharpened in step 4>
 
    _Captured YYYY-MM-DD via /idea. Status: researching._
 
@@ -150,12 +150,12 @@ Use the same `$root` resolved above for every path in this section.
    _(researcher fills — what acting on it involves, naming the next skill)_
    ```
 
-4. Add a pointer bullet for it under `$root/ideas/README.md` **Backlog**. The
+5. Add a pointer bullet for it under `$root/ideas/README.md` **Backlog**. The
    bullet number is the claimed file number: `#$NN` points to
    `ideas/$NN-$SLUG.md`, so there is no separate README counter to race. State
    the idea, not its live status — status lives in the file header and on the
    status line, and the bullet goes stale the moment the researcher lands.
-5. Write the researcher's brief to `$root/.qq/idea-brief-$NN.md`, substituting
+6. Write the researcher's brief to `$root/.qq/idea-brief-$NN.md`, substituting
    the real `NN`, `SLUG`, and root at write time so the researcher reads its
    actual file and stamps its actual `idea-$NN` producer:
 
@@ -183,7 +183,7 @@ Use the same `$root` resolved above for every path in this section.
    EOF
    ```
 
-6. Spawn it detached:
+7. Spawn it detached:
 
    ```bash
    brief="$root/.qq/idea-brief-$NN.md"
@@ -239,4 +239,4 @@ Use the same `$root` resolved above for every path in this section.
    no equivalent git rail today. Other mitigations are stdout/stderr in `.qq/idea-research-$NN.log`,
    fetched pages treated as untrusted per the research skill's method, and gated landing with human review.
 
-7. Ack in one line (contract 3) and return to the interrupted task.
+8. Ack in one line (contract 3) and return to the interrupted task.
