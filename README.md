@@ -26,10 +26,15 @@ just done — but *nothing* skips verification, and everything lands through the
 gate; the landing agent drives `no-mistakes axi run --intent "<task + AC>"`
 with `--skip ci` only after confirming no CI exists, and relays only judgment
 calls. Full detail in `AGENTS.md`. Invoke `orchestrate` to
-run the whole loop end-to-end as one command — Claude conducts, Codex implements.
-Long-running work stamps producer slots in `.qq/state.json` with `qq-phase`, and
-`qq-phase render` feeds the Claude Code status line with every active phase plus
-any live gate step.
+run the whole loop end-to-end as one command — Claude conducts, Codex implements
+in a named herdr worker pane. Long-running work stamps producer slots in
+`.qq/state.json` with `qq-phase`, and `qq-phase render` feeds the Claude Code
+status line with every active phase plus any live gate step.
+
+When the backlog is deep, pick from the claimable frontier instead of the raw
+To Do column: `bin/qq-frontier` lists unassigned ready tasks with no local or
+remote `task-<id>` branch claim; `--afk` narrows to unattended-safe work and
+`--json` is for tooling.
 
 ## Skills
 16 skills, curated from four MIT collections (mattpocock, superpowers,
@@ -72,15 +77,21 @@ provenance is in [`SKILLS-ATTRIBUTION.md`](./SKILLS-ATTRIBUTION.md).
    (`install.sh --skip-config`, then `claude mcp add --scope user codebase-memory`
    + the `[mcp_servers.codebase-memory]` block in `~/.codex/config.toml`); the
    index is fully derived, lives in `~/.cache`, and auto-refreshes
-   (`auto_index`/`auto_watch`); agents reach it as on-demand MCP tools. The intent
-   registry is `backlog/` ([Backlog.md](https://github.com/MrLesk/Backlog.md),
+   (`auto_index`/`auto_watch`); agents reach it as on-demand MCP tools. TASK-18
+   tracks the remaining qq-specific operationalization gap: verify the main-tree
+   index, stop or accept throwaway gate-worktree indexes, and diagnose the
+   disconnect observed on 2026-07-08. The intent registry is `backlog/`
+   ([Backlog.md](https://github.com/MrLesk/Backlog.md),
    `npm i -g backlog.md`); durable docs target `openwiki/`-style in-repo
    markdown. Today `bin/qq-openwiki-refresh` only runs when `openwiki/`, the
    OpenWiki CLI, and a provider key exist; task-7 is researching the sub-only /
    no-key engine path before initial generation.
 8. **Sessions** — install herdr (`brew install herdr`), then
    `herdr integration install claude codex` so it tracks agent state. Fan out with
-   `herdr worktree create --branch <name>` + `herdr agent start <name> --cwd <worktree> -- claude`.
+   task branches (`task-<id>-<slug>`, or `task-<id>.<n>-<slug>` for slices):
+   `herdr worktree create --branch task-<id>-<slug>` +
+   `herdr agent start <name> --cwd <worktree> -- claude`; `orchestrate` uses
+   the same surface for Codex workers (`cx-<branch> -- codex`).
 
 ## Provenance
 Curated from MIT sources, kept only where they serve my workflow: superpowers

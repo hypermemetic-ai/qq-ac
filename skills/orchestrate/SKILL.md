@@ -1,6 +1,6 @@
 ---
 name: orchestrate
-description: Conducts a non-trivial engineering task through qq's full loop as a two-model split — Claude conducts and judges in the main session while Codex does the implementation — so interactive work and noisy reads never pollute the conductor's context and the reviewer is never the author. Use to take a real build task from intent to a landed, verified change end-to-end; not for questions, lookups, or trivial one-liners, which use the small-change shortcut.
+description: Conducts a non-trivial engineering task through qq's full loop as a two-model split — Claude conducts and judges in the main session while Codex implements in a named herdr worker pane — so interactive work and noisy reads never pollute the conductor's context and the reviewer is never the author. Use to take a real build task from intent to a landed, verified change end-to-end; not for questions, lookups, or trivial one-liners, which use the small-change shortcut.
 ---
 
 # Orchestrate
@@ -84,24 +84,24 @@ here once; every step below refers to it.
 1. **Start** — one worker per working tree, spawned into your own tab
    (tab-per-task: one tab reads as one task; cap ~3 panes per tab). Find your
    tab with `herdr pane current` → `tab_id`, then:
-   `herdr agent start cx-<branch> --cwd <tree> --tab <tab_id> --split down
-   --no-focus -- codex`. Fanning out? `herdr worktree create --branch <name>`
-   first — worktree affinity is per-pane via `--cwd`.
+   `herdr agent start cx-<branch> --cwd <tree> --tab <tab_id> --split right
+   --no-focus -- codex`. Resolve the pane id from the start output or
+   `herdr agent get cx-<branch>` → `pane_id` before any `pane send-keys`.
+   Fanning out? `herdr worktree create --branch <name>` first — worktree
+   affinity is per-pane via `--cwd`.
 2. **Trust prompt** — `herdr agent read cx-<branch> --source visible`; if the
    directory-trust prompt is showing, `herdr pane send-keys <pane> Enter`
    (option 1 is preselected). Long-term: pre-trust project roots in
    `~/.codex/config.toml`.
 3. **Handoff** — write the plan task(s) + the acceptance check to
-   `.qq/handoffs/<n>-brief.md` (multi-line text must not ride `agent send` — a
-   newline submits early). Then:
+   `.qq/handoffs/<n>-brief.md` (multi-line text must not ride
+   `herdr agent send` — a newline submits early). Then:
    `herdr agent send cx-<branch> "Execute .qq/handoffs/<n>-brief.md; when done
    write .qq/handoffs/<n>-report.md (what changed, files touched, how to
-   verify)."`. Before submitting, wait a couple seconds or read
-   `herdr agent read cx-<branch> --source visible` until the text is in the pane,
-   then `herdr pane send-keys <pane> Enter`. The worker edits the tree in place
-   (trusted + full-access) and inherits `AGENTS.md` as its own instructions, so
-   the behavioral floor already binds it — point it at the plan task, don't
-   re-explain the standards.
+   verify)."` followed by `herdr pane send-keys <pane> Enter`. The worker edits
+   the tree in place (trusted + full-access) and inherits `AGENTS.md` as its own
+   instructions, so the behavioral floor already binds it — point it at the plan
+   task, don't re-explain the standards.
 4. **Wait** — `herdr agent wait cx-<branch> --status idle --timeout <generous,
    ms>`. If idle flickers mid-turn, wait for idle twice a few seconds apart
    before trusting it. On timeout, `herdr agent read cx-<branch>` for signs of
