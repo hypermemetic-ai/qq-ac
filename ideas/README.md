@@ -153,3 +153,9 @@ it its own `NN-slug.md` file in this folder and leave a one-line pointer here.
   batches, contract the old form away. Deliberately not folded into
   `writing-plans` yet — nothing speculative; reach for it when a real wide
   refactor shows up. _(2026-07-08)_
+- **#11 · Slicing-pilot lessons for serial gated slices** →
+  [`06-slicing-pilot-lessons.md`](06-slicing-pilot-lessons.md).
+  ✅ **Banked from TASK-8 (07-08).** Parent + dependency-linked slice sub-tasks
+  work, but hand-built branch stacks delinearize under the gate; future
+  `writing-plans` / `executing-plans` guidance should land one slice PR at a
+  time, each re-driven after its predecessor reaches `main`. _(2026-07-08)_

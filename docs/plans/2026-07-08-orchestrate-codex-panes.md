@@ -117,9 +117,10 @@ uses them unmodified; still no protocol beyond the handoff-file convention.
 
 This task is the **slicing pilot** (operator decision 2026-07-08): planned by
 hand as parent `task-8` plus dependency-linked slice sub-tasks, each slice
-landing through the gate as its own small unattended run, on its own branch
-stacked on the previous slice. `writing-plans` / `executing-plans` get reworked
-only from this pilot's lessons (captured in slice 3).
+landing through the gate as its own small unattended run, serially on its own
+branch after the previous slice reaches `main`. `writing-plans` /
+`executing-plans` get reworked only from this pilot's lessons (captured in slice
+3).
 
 - **Slice 0 — plan (parent branch, this doc).** Fold the approved substrate
   (tab topology, 0.7.3 observe primitives, resume-by-id) into this design doc;
