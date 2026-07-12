@@ -1,0 +1,46 @@
+---
+id: TASK-4
+title: Deliver the methodology as an essential kernel with owned procedures
+status: In Progress
+assignee:
+  - '@claude'
+created_date: '2026-07-12 04:08'
+updated_date: '2026-07-12 04:21'
+labels:
+  - architecture
+  - context-engineering
+dependencies:
+  - TASK-2
+documentation:
+  - doc-16
+ordinal: 3000
+---
+
+## Description
+
+<!-- SECTION:DESCRIPTION:BEGIN -->
+Implement the essential-context delivery architecture settled under TASK-2 and doc-16. Rewrite AGENTS.md as an always-on kernel that carries only what must precede conditional retrieval: operator authority, the behavioral invariants, the orientation and routing map, the delivery contract, and runtime neutrality. Move every conditional procedure to its owning surface instead of deleting it. Author all prose fresh; preserve the original strong behavioral lines only where they remain semantically exact. Supersede the unaccepted TASK-3 reviewer-capsule prototype (PR #29) with an architecture-owned redesign of the code-review skill.
+<!-- SECTION:DESCRIPTION:END -->
+
+## Acceptance Criteria
+<!-- AC:BEGIN -->
+- [x] #1 The authored AGENTS.md kernel carries only admission-worthy content and both generated marker blocks survive byte-for-byte
+- [x] #2 Every semantic unit removed from AGENTS.md has a named owning surface; none is silently dropped
+- [x] #3 The code-review skill owns delegated review through a complete brief, a fresh reviewer without inherited history, and a context-gap protocol, superseding PR #29
+- [x] #4 The herdr coordination procedure moves to a dedicated agent-messaging skill
+- [x] #5 An independent code-review of the Change passes before commit, push, and pull request
+<!-- AC:END -->
+
+## Implementation Plan
+
+<!-- SECTION:PLAN:BEGIN -->
+1. Author the AGENTS.md kernel fresh: eight invariants (authority, honesty, proportionality, locality, commitment gate, evidence, supplied context/own judgment, portability), the surface map with source precedence, the no-supplied-orientation router, and the delivery contract. 2. Preserve both generated marker blocks byte-for-byte as tool-owned adapter tails. 3. Rewrite the code-review skill around owned orientation, a complete review brief, a fresh no-history reviewer, and a context-gap protocol. 4. Create the agent-messaging skill to own the herdr procedure. 5. Verify with static Checks (block identity, size, stale references, whitespace). 6. Independent code-review, then commit, push, PR; close PR #29 as superseded.
+<!-- SECTION:PLAN:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Disposition of every removed AGENTS.md unit — intro: kernel, rewritten. Surface table and source precedence: kernel, compressed. Authored codebase-memory usage detail (index confirmation, index_repository after material changes, detect_changes-is-not-freshness): owned by README.md Knowledge runtime, which already states each fact; kernel keeps routing plus verify-in-source. Generated codebase-memory block: preserved byte-for-byte, relocated to the adapter tail. Six-step orientation: kernel, rewritten; Backlog command detail beyond the two entry commands is owned by backlog instructions overview (CLI self-documentation). Behavioral floor: kernel, rewritten as invariants with the four strong lines preserved verbatim where semantically exact. Commitment-gate paragraph: kernel invariant; its authority/side-effects item moved to the authority invariant. Tasks and Changes plus Verification and review: kernel delivery contract and evidence invariant; review timing and procedure owned by the code-review skill; 'GitHub deletes the merged branch' dropped as platform automation, not agent behavior. Agent collaboration: new agent-messaging skill owns all five herdr facts; kernel keeps one routing line. Runtime neutrality: portability invariant. Generated OpenWiki block: preserved byte-for-byte. New: the supplied-context/own-judgment invariant settles the delegation rule; the code-review brief and context-gap protocol are its first instantiation, superseding the TASK-3 prototype. openwiki/ pages regenerate through openwiki-maintainer after landing. Operator runs bin/install.sh from the canonical checkout after merge to link the new skill.
+
+Verification: both generated blocks byte-identical to HEAD (sed extraction + diff, rerun after fixes); AGENTS.md 204 lines / 8,858 bytes to 138 / 6,395; no stale references to removed section names outside historical records and derived openwiki; git diff --check clean. Independent fresh-context review (read-only reviewer, complete brief, no inherited history) confirmed the semantic trace and returned three low findings: the dropped multi-step plan-with-verification obligation, the dropped push-after-each-green-commit cadence, and inconsistent bound-term capitalization. All three fixed with smallest causal remedies; the same reviewer confirmed each fix against the exact delta and reported no remaining material findings.
+<!-- SECTION:NOTES:END -->
