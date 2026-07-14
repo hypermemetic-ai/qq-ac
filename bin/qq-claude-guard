@@ -29,7 +29,11 @@ BACKLOG_REASON = (
 
 
 def without_shell_comments(command: str) -> str:
-    """Remove unquoted shell comments while retaining command separators."""
+    """Remove unquoted comments and splice backslash-newline continuations.
+
+    Bash removes an unquoted or double-quoted backslash-newline before
+    tokenization; single-quoted and comment text keeps it literally.
+    """
     result: list[str] = []
     quote: str | None = None
     word_start = True
@@ -37,12 +41,16 @@ def without_shell_comments(command: str) -> str:
     while index < len(command):
         character = command[index]
         if quote is not None:
+            if character == "\\" and quote == '"' and index + 1 < len(command):
+                if command[index + 1] == "\n":
+                    index += 2
+                    continue
+                result.extend((character, command[index + 1]))
+                index += 2
+                continue
             result.append(character)
             if character == quote:
                 quote = None
-            elif character == "\\" and quote == '"' and index + 1 < len(command):
-                index += 1
-                result.append(command[index])
             index += 1
             continue
         if character in {"'", '"'}:
@@ -52,6 +60,9 @@ def without_shell_comments(command: str) -> str:
             index += 1
             continue
         if character == "\\" and index + 1 < len(command):
+            if command[index + 1] == "\n":
+                index += 2
+                continue
             word_start = False
             result.extend((character, command[index + 1]))
             index += 2
@@ -67,6 +78,53 @@ def without_shell_comments(command: str) -> str:
             word_start = True
         else:
             word_start = False
+        index += 1
+    return "".join(result)
+
+
+def without_fd_prefixes(text: str) -> str:
+    """Drop standalone descriptor numbers fused to a redirection operator.
+
+    Bash reads digits as a redirection's file descriptor only when they form
+    a standalone word immediately preceding ``<`` or ``>``; tokenization
+    discards that adjacency, so the digits are removed here instead. Spaced
+    digits remain ordinary operands, exactly as bash treats them.
+    """
+    result: list[str] = []
+    quote: str | None = None
+    word_start = True
+    index = 0
+    while index < len(text):
+        character = text[index]
+        if quote is not None:
+            result.append(character)
+            if character == quote:
+                quote = None
+            elif character == "\\" and quote == '"' and index + 1 < len(text):
+                index += 1
+                result.append(text[index])
+            index += 1
+            continue
+        if character in {"'", '"'}:
+            quote = character
+            word_start = False
+            result.append(character)
+            index += 1
+            continue
+        if character == "\\" and index + 1 < len(text):
+            word_start = False
+            result.extend((character, text[index + 1]))
+            index += 2
+            continue
+        if word_start and character.isdigit():
+            end = index
+            while end < len(text) and text[end].isdigit():
+                end += 1
+            if end < len(text) and text[end] in "<>":
+                index = end
+                continue
+        result.append(character)
+        word_start = character.isspace() or character in ";&|()<>`"
         index += 1
     return "".join(result)
 
@@ -146,7 +204,7 @@ def heredoc_operator_details(line: str) -> list[tuple[bool, bool]]:
 def heredoc_delimiters(line: str) -> list[tuple[str, bool, bool]]:
     """Return delimiter, tab-stripping, and expansion for each heredoc."""
     lexer = shlex.shlex(
-        without_shell_comments(line),
+        without_fd_prefixes(without_shell_comments(line)),
         posix=True,
         punctuation_chars=";&|()\n`<>",
     )
@@ -303,15 +361,83 @@ def command_substitutions(text: str, *, quotes_are_literal: bool = False) -> lis
     return substitutions
 
 
+def line_continuation(text: str) -> str | None:
+    """Return how text continues onto another physical line, if it does.
+
+    "splice" marks a backslash-newline bash removes before tokenization;
+    "quote" marks an unterminated quote whose newline is data. Comment
+    text never continues.
+    """
+    quote: str | None = None
+    word_start = True
+    index = 0
+    while index < len(text):
+        character = text[index]
+        if quote is not None:
+            if character == "\\" and quote == '"' and index + 1 < len(text):
+                if index + 2 == len(text) and text[index + 1] == "\n":
+                    return "splice"
+                index += 2
+                continue
+            if character == quote:
+                quote = None
+            index += 1
+            continue
+        if character in {"'", '"'}:
+            quote = character
+            word_start = False
+            index += 1
+            continue
+        if character == "\\" and index + 1 < len(text):
+            if index + 2 == len(text) and text[index + 1] == "\n":
+                return "splice"
+            word_start = False
+            index += 2
+            continue
+        if character == "#" and word_start:
+            while index < len(text) and text[index] != "\n":
+                index += 1
+            continue
+        word_start = character.isspace() or character in ";&|()<>`"
+        index += 1
+    return "quote" if quote is not None else None
+
+
+def splices_heredoc_line(line: str) -> bool:
+    """Report whether an expanding heredoc body line splices into the next.
+
+    Bash removes an unescaped backslash-newline in an unquoted heredoc
+    before comparing the line against the delimiter.
+    """
+    if not line.endswith("\n") or line.endswith("\r\n"):
+        return False
+    content = line[:-1]
+    return (len(content) - len(content.rstrip("\\"))) % 2 == 1
+
+
 def without_heredoc_bodies(command: str) -> tuple[str, list[str]]:
-    """Strip heredocs, retaining substitutions from expansion-bearing bodies."""
+    """Strip heredocs, retaining substitutions from expansion-bearing bodies.
+
+    Heredoc discovery reads spliced logical lines, matching bash, while
+    body and terminator lines stay physical.
+    """
     pending: list[tuple[str, bool, bool]] = []
     body: list[str] = []
     substitutions: list[str] = []
     result: list[str] = []
-    for line in command.splitlines(keepends=True):
+    lines = command.splitlines(keepends=True)
+    index = 0
+    while index < len(lines):
+        line = lines[index]
         if pending:
             delimiter, strip_tabs, expands = pending[0]
+            while (
+                expands
+                and index + 1 < len(lines)
+                and splices_heredoc_line(line)
+            ):
+                index += 1
+                line = line[:-2] + lines[index]
             content = line.rstrip("\r\n")
             comparison = content.lstrip("\t") if strip_tabs else content
             if comparison == delimiter:
@@ -329,10 +455,23 @@ def without_heredoc_bodies(command: str) -> tuple[str, list[str]]:
                 result.append("\r\n")
             elif line.endswith("\n"):
                 result.append("\n")
+            index += 1
             continue
 
-        result.append(line)
-        pending.extend(heredoc_delimiters(line))
+        start = index
+        logical = line
+        while index + 1 < len(lines):
+            continuation = line_continuation(logical)
+            if continuation is None:
+                break
+            index += 1
+            if continuation == "splice":
+                logical = logical[:-2] + lines[index]
+            else:
+                logical += lines[index]
+        result.extend(lines[start : index + 1])
+        pending.extend(heredoc_delimiters(logical))
+        index += 1
     if pending and pending[0][2]:
         substitutions.extend(
             command_substitutions("".join(body), quotes_are_literal=True)
@@ -343,7 +482,7 @@ def without_heredoc_bodies(command: str) -> tuple[str, list[str]]:
 def shell_words(command: str) -> list[str] | None:
     """Tokenize shell syntax without expanding or executing any part of it."""
     lexer = shlex.shlex(
-        without_shell_comments(command),
+        without_fd_prefixes(without_shell_comments(command)),
         posix=True,
         punctuation_chars=";&|()\n`<>",
     )
@@ -376,13 +515,6 @@ def skip_redirection(words: list[str], index: int) -> int | None:
     redirections = {"<", ">", "<<", ">>", "<<<", "<>", ">&", "<&", "&>", "&>>"}
     if words[index] in redirections:
         return index + 2 if index + 1 < len(words) else len(words)
-    if (
-        words[index].isdigit()
-        and index + 1 < len(words)
-        and words[index + 1] in redirections
-        and not words[index + 1].startswith("&")
-    ):
-        return index + 3 if index + 2 < len(words) else len(words)
     return None
 
 
@@ -446,7 +578,13 @@ def unwrap_invocation(words: list[str]) -> list[str]:
     index += 1
 
     if executable == "command":
-        while index < len(words) and words[index].startswith("-"):
+        while index < len(words):
+            redirected = skip_redirection(words, index)
+            if redirected is not None:
+                index = redirected
+                continue
+            if not words[index].startswith("-"):
+                break
             option = words[index]
             index += 1
             if option in {"-v", "-V"}:
@@ -523,6 +661,10 @@ def unwrap_invocation(words: list[str]) -> list[str]:
         }
         while index < len(words):
             word = words[index]
+            redirected = skip_redirection(words, index)
+            if redirected is not None:
+                index = redirected
+                continue
             if word == "--":
                 index += 1
                 break

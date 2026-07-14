@@ -126,6 +126,125 @@ assert_blocked "$(bash_payload 'time -o 2>/dev/null timing.txt gh pr merge 42')"
 assert_blocked "$(bash_payload 'timeout 2 &>/dev/null gh pr merge 42')" \
   'only the operator may merge pull requests' \
   'numeric wrapper operand before ampersand redirection'
+assert_blocked "$(bash_payload 'timeout 2 >/dev/null gh pr merge 42')" \
+  'only the operator may merge pull requests' \
+  'spaced numeric duration before redirection and gh pr merge'
+assert_blocked "$(bash_payload 'command 2>/dev/null -p gh pr merge 42')" \
+  'only the operator may merge pull requests' \
+  'command with redirection before its options'
+assert_blocked "$(bash_payload 'sudo 2>/dev/null -u root gh pr merge 42')" \
+  'only the operator may merge pull requests' \
+  'sudo with redirection before its options'
+assert_allowed "$(bash_payload 'timeout 2 >/dev/null make build')" \
+  'spaced numeric duration before redirection and an ordinary command'
+
+continuation_merge="$({
+  # shellcheck disable=SC1003
+  printf '%s\n' \
+    'gh \' \
+    'pr merge 42'
+})"
+assert_blocked "$(bash_payload "$continuation_merge")" \
+  'only the operator may merge pull requests' \
+  'gh pr merge split by a line continuation'
+
+continuation_redirect_merge="$({
+  # shellcheck disable=SC1003
+  printf '%s\n' \
+    'gh \' \
+    'pr 2>/dev/null merge 42'
+})"
+assert_blocked "$(bash_payload "$continuation_redirect_merge")" \
+  'only the operator may merge pull requests' \
+  'continuation-split gh pr merge with redirection'
+
+comment_continuation_merge="$({
+  # shellcheck disable=SC1003
+  printf '%s\n' \
+    '# note \' \
+    'gh pr merge 42'
+})"
+assert_blocked "$(bash_payload "$comment_continuation_merge")" \
+  'only the operator may merge pull requests' \
+  'gh pr merge after a comment ending in a backslash'
+
+quoted_continuation="$({
+  printf '%s\n' \
+    "printf '%s' 'gh \\" \
+    "pr merge 42'"
+})"
+assert_allowed "$(bash_payload "$quoted_continuation")" \
+  'single-quoted text containing a backslash-newline'
+
+spliced_delimiter_merge="$({
+  # shellcheck disable=SC1003
+  printf '%s\n' \
+    'cat <<E\' \
+    'OF' \
+    'documentation' \
+    'EOF' \
+    'gh pr merge 42'
+})"
+assert_blocked "$(bash_payload "$spliced_delimiter_merge")" \
+  'only the operator may merge pull requests' \
+  'gh pr merge after a heredoc with a continuation-split delimiter'
+
+quoted_body_continuation_merge="$({
+  # shellcheck disable=SC1003
+  printf '%s\n' \
+    "cat <<'EOF'" \
+    'doc \' \
+    'EOF' \
+    'gh pr merge 42'
+})"
+assert_blocked "$(bash_payload "$quoted_body_continuation_merge")" \
+  'only the operator may merge pull requests' \
+  'gh pr merge after a quoted heredoc body backslash'
+
+expanding_body_continuation="$({
+  # shellcheck disable=SC1003
+  printf '%s\n' \
+    'cat <<EOF' \
+    'doc \' \
+    'EOF' \
+    'gh pr merge 42'
+})"
+assert_allowed "$(bash_payload "$expanding_body_continuation")" \
+  'expanding heredoc body backslash splices past the terminator'
+
+open_quote_heredoc_mention="$({
+  printf '%s\n' \
+    "echo 'first" \
+    "second' && cat <<'EOF'" \
+    'gh pr merge 42' \
+    'EOF'
+})"
+assert_allowed "$(bash_payload "$open_quote_heredoc_mention")" \
+  'merge text in a heredoc after a multiline quoted argument'
+
+open_quote_heredoc_merge="$({
+  printf '%s\n' \
+    "echo 'first" \
+    "second' && cat <<'EOF'" \
+    'documented' \
+    'EOF' \
+    'gh pr merge 42'
+})"
+assert_blocked "$(bash_payload "$open_quote_heredoc_merge")" \
+  'only the operator may merge pull requests' \
+  'gh pr merge after a heredoc following a multiline quoted argument'
+
+spliced_delimiter_mention="$({
+  # shellcheck disable=SC1003
+  printf '%s\n' \
+    'cat <<E\' \
+    'OF' \
+    'gh pr merge 42 is documented' \
+    'EOF' \
+    'git status'
+})"
+assert_allowed "$(bash_payload "$spliced_delimiter_mention")" \
+  'merge text inside a heredoc with a continuation-split delimiter'
 
 quoted_heredoc="$({
   printf '%s\n' \
