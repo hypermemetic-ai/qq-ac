@@ -4,7 +4,7 @@ title: Phase 4 — Engine/glass split (harness-native delegation)
 status: Done
 assignee: []
 created_date: '2026-07-14 05:10'
-updated_date: '2026-07-14 21:14'
+updated_date: '2026-07-14 21:16'
 labels: []
 dependencies:
   - TASK-34
@@ -12,6 +12,7 @@ documentation:
   - doc-38
   - doc-39
   - doc-40
+  - doc-41
 ordinal: 32000
 ---
 
