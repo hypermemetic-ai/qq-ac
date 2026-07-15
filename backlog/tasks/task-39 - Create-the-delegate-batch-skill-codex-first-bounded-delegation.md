@@ -1,7 +1,7 @@
 ---
 id: TASK-39
 title: Create the delegate-batch skill (codex-first bounded delegation)
-status: To Do
+status: In Progress
 assignee: []
 created_date: '2026-07-14 22:46'
 updated_date: '2026-07-15 00:12'
