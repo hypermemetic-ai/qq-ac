@@ -3,7 +3,7 @@ id: doc-1
 title: Ideas
 type: other
 created_date: '2026-07-10 20:56'
-updated_date: '2026-07-16 04:24'
+updated_date: '2026-07-16 04:43'
 tags:
   - ideas
 ---
@@ -20,3 +20,7 @@ Add explicit flag handling to `bin/install.sh`: `--help` should display usage an
 ## 2026-07-15 23:24
 
 delegations sometimes hang invisibly.
+
+## 2026-07-15 23:43
+
+backlog board is always stale. if cause isn't obvious, test adversarially.
