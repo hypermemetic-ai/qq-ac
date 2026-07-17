@@ -76,14 +76,17 @@ count_occurrences() {
 
   [ -d "$scope_path" ] || fail "$name scope is not a directory: $scope"
 
+  # --binary-files=text: a scoped file carrying a NUL byte is otherwise
+  # treated as binary, its -o matches suppressed from stdout while grep still
+  # exits 0 — silently undercounting the idiom and passing a stale budget.
   set +e
   case "$match_kind" in
     fixed)
-      output="$(grep -rhoF -- "$pattern" "$scope_path")"
+      output="$(grep --binary-files=text -rhoF -- "$pattern" "$scope_path")"
       grep_status=$?
       ;;
     extended-regex)
-      output="$(grep -rhoE -- "$pattern" "$scope_path")"
+      output="$(grep --binary-files=text -rhoE -- "$pattern" "$scope_path")"
       grep_status=$?
       ;;
   esac

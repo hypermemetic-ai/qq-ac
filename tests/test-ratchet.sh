@@ -61,6 +61,15 @@ assert_contains "$(<"$tmp/output")" \
   "measured=$((codex_budget + 1)) budget=$codex_budget"
 rm "$fixture/skills/ratchet-probe.txt"
 
+# A NUL byte must not let a scoped file hide its idiom occurrences: grep's
+# binary heuristic would otherwise suppress the match and pass a stale budget.
+printf 'codex exec\0filler\n' >"$fixture/skills/ratchet-probe.dat"
+expect_failure check 'codex-exec NUL-file exceed check'
+assert_contains "$(<"$tmp/output")" 'codex_exec exceeds budget'
+assert_contains "$(<"$tmp/output")" \
+  "measured=$((codex_budget + 1)) budget=$codex_budget"
+rm "$fixture/skills/ratchet-probe.dat"
+
 runtime_budget="$(budget_value runtime_specific_flags)"
 printf '%s\n' '--profile' >"$fixture/skills/ratchet-probe.txt"
 expect_failure check 'runtime-flag exceed check'
