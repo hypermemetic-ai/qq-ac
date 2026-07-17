@@ -12,6 +12,7 @@ run_probe() (
 
   local tmp worktree actor repository_json repo default_branch
   local baseline candidate remote_after push_status
+  local ssh_command push_actor
   local worktree_added=0
   tmp="$(mktemp -d "${TMPDIR:-/tmp}/qq-c2-probe.XXXXXX")"
   worktree="$tmp/worktree"
@@ -47,6 +48,25 @@ run_probe() (
   printf 'authenticated_actor: %s\n' "$actor"
   printf 'repository: %s\n' "$repo"
 
+  # The gh login above does not govern the push: git authenticates over SSH
+  # with whatever core.sshCommand pins (this repo pins ~/.ssh/qqp-bot). The
+  # machine's default SSH identity is the operator admin account, which CAN
+  # push to main — so resolve the identity through the exact command git will
+  # use and fail closed unless it is qqp-bot, before creating any commit.
+  ssh_command="$(git -C "$ROOT" config --get core.sshCommand || printf 'ssh')"
+  # GitHub answers `ssh -T` with exit status 1 ("no shell access"); capture the
+  # greeting without letting that status trip set -e/pipefail.
+  set +e
+  push_actor="$($ssh_command -T -o BatchMode=yes git@github.com 2>&1 \
+    | sed -n 's/^Hi \([^!]*\)!.*/\1/p')"
+  set -e
+  if [ "$push_actor" != 'qqp-bot' ]; then
+    printf 'CRITICAL: refusing to probe; git push identity resolves to %s, expected qqp-bot\n' \
+      "${push_actor:-unknown}"
+    exit 1
+  fi
+  printf 'push_identity: %s\n' "$push_actor"
+
   git -C "$ROOT" fetch --quiet origin \
     refs/heads/main:refs/remotes/origin/main
   baseline="$(git -C "$ROOT" rev-parse refs/remotes/origin/main)"
@@ -78,6 +98,13 @@ run_probe() (
   fi
   if ! grep -Fq 'GH013' "$tmp/push-output"; then
     printf 'CRITICAL: push failed, but not with the expected protected-branch GH013 rejection\n'
+    exit 1
+  fi
+  # GH013 alone bundles the PR and status-check rules, which reject any actor;
+  # the operator-only push restriction is proven only by the specific
+  # authorization denial, so assert that line explicitly.
+  if ! grep -Fq "You're not authorized to push to this branch" "$tmp/push-output"; then
+    printf 'CRITICAL: GH013 seen, but not the operator-only push-authorization denial\n'
     exit 1
   fi
   if [ "$remote_after" != "$baseline" ]; then

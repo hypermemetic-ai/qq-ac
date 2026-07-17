@@ -140,8 +140,11 @@ run_probe() (
     -c user.email="$actor@users.noreply.github.com" \
     commit --quiet --allow-empty -m 'test: probe agent merge rejection (T-80)'
   candidate="$(git -C "$worktree" rev-parse HEAD)"
-  git -C "$worktree" push --quiet origin "HEAD:refs/heads/$branch"
+  # Arm cleanup before the push: a push can create the remote ref and still
+  # fail its acknowledgement, so the flag must be set first or an interrupted
+  # push leaks the scratch branch. Cleanup tolerates an absent ref.
   remote_branch_pushed=1
+  git -C "$worktree" push --quiet origin "HEAD:refs/heads/$branch"
 
   gh api -X POST "repos/$repo/pulls" \
     -f title='test: probe agent merge rejection (T-80)' \
@@ -199,6 +202,14 @@ run_probe() (
   fi
   if ! grep -Eq 'HTTP/[0-9.]+ 405|\(HTTP 405\)' "$tmp/merge-response" "$tmp/merge-error"; then
     printf 'CRITICAL: merge failed, but not with the expected HTTP 405 protected-ref rejection\n'
+    exit 1
+  fi
+  # 405 alone is GitHub's generic "merge cannot be performed" (it also covers a
+  # disabled merge method); the credential boundary is proven only by the
+  # protected-ref authorization denial, so assert that specific message.
+  if ! grep -Fq "You're not authorized to push to this branch" \
+    "$tmp/merge-response" "$tmp/merge-error"; then
+    printf 'CRITICAL: 405 seen, but not the protected-ref authorization denial that proves the credential boundary\n'
     exit 1
   fi
 

@@ -108,8 +108,11 @@ run_probe() (
     -c user.email="$actor@users.noreply.github.com" \
     commit --quiet --allow-empty -m 'test: probe PR handoff URL (T-80)'
   candidate="$(git -C "$worktree" rev-parse HEAD)"
-  git -C "$worktree" push --quiet origin "HEAD:refs/heads/$branch"
+  # Arm cleanup before the push: a push can create the remote ref and still
+  # fail its acknowledgement, so the flag must be set first or an interrupted
+  # push leaks the scratch branch. Cleanup tolerates an absent ref.
   remote_branch_pushed=1
+  git -C "$worktree" push --quiet origin "HEAD:refs/heads/$branch"
 
   pr_output="$(gh pr create \
     --repo "$repo" \
