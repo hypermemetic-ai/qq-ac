@@ -19,6 +19,7 @@ set -euo pipefail
 case "${1:-} ${2:-}" in
   "workspace list")
     printf '%s\n' "$FAKE_WORKSPACES_JSON"
+    exit "${FAKE_HERDR_EXIT:-0}"
     ;;
   *)
     printf 'unexpected fake herdr command: %s\n' "$*" >&2
@@ -46,6 +47,16 @@ export FAKE_WORKSPACES_JSON="{\"result\":{\"workspaces\":[{\"focused\":false,\"l
 assert_equal "$tmp/proj-deciq" "$(qq_space_dir)"
 assert_equal "$tmp/proj-deciq" "$(qqy)"
 assert_equal "$tmp/proj-deciq" "$(qqbr)"
+
+# A herdr that prints valid JSON but exits nonzero falls back to QQ_HOME.
+# Probe with pipefail off, matching interactive shells and the popups.
+export FAKE_WORKSPACES_JSON="{\"result\":{\"workspaces\":[{\"focused\":true,\"worktree\":{\"checkout_path\":\"$tmp/proj-deciq\"}}]}}"
+export FAKE_HERDR_EXIT=1
+if output="$( set +o pipefail; qq_space_dir )"; then
+  fail "qq_space_dir accepted output from a failing herdr: $output"
+fi
+assert_equal "$QQ_HOME" "$( set +o pipefail; qqy )"
+unset FAKE_HERDR_EXIT
 
 # A focused workspace without a worktree falls back to QQ_HOME.
 export FAKE_WORKSPACES_JSON='{"result":{"workspaces":[{"focused":true,"label":"deciq-logic"}]}}'

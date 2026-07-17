@@ -40,15 +40,15 @@ function qqroot() {
 }
 
 # Print the focused Herdr space's worktree checkout path. Fail if Herdr/jq are
-# unavailable, no focused space has a worktree, or its directory is missing;
-# callers then fall back to QQ_HOME.
+# unavailable, the Herdr command fails, no focused space has a worktree, or its
+# directory is missing; callers then fall back to QQ_HOME.
 function qq_space_dir() {
-    local dir
+    local json dir
 
     command -v herdr >/dev/null 2>&1 || return 1
     command -v jq >/dev/null 2>&1 || return 1
-    dir="$(command herdr workspace list 2>/dev/null \
-        | command jq -r '[.result.workspaces[] | select(.focused == true) | .worktree.checkout_path // empty][0] // empty' 2>/dev/null)" || return 1
+    json="$(command herdr workspace list 2>/dev/null)" || return 1
+    dir="$(command jq -r '[.result.workspaces[] | select(.focused == true) | .worktree.checkout_path // empty][0] // empty' <<<"$json" 2>/dev/null)" || return 1
     [ -n "$dir" ] && [ -d "$dir" ] || return 1
     printf '%s\n' "$dir"
 }
