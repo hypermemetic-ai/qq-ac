@@ -133,6 +133,11 @@ jq -e '
   .status == "refused"
   and (.message | contains("never justifies overwriting"))
 ' "$tmp/result.json" >/dev/null
+run_status 2 dispatched "${rail_args[@]}"
+jq -e '
+  .status == "refused"
+  and (.message | contains("never justifies overwriting"))
+' "$tmp/result.json" >/dev/null
 export TMPDIR="$tmp/runtime"
 
 # Exit 1: invalid events are command errors.
