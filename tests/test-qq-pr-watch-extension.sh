@@ -301,8 +301,18 @@ async function testIntervals() {
   const raw = createHarness();
   assert.throws(
     () => raw.tool.prepareArguments({ action: "watch", pr: "17", interval: "30" }),
-    /integer from 30 through 60/,
-    "Pi pre-validation could sanitise a string interval",
+    /pull request 17 watch failed: --interval must be an integer from 30 through 60 seconds/,
+    "Pi pre-validation could sanitise a string interval, and its error must name the pull request",
+  );
+  assert.throws(
+    () => raw.tool.prepareArguments({ action: "inspect", pr: "17", interval: 30.5 }),
+    /pull request 17 inspection failed: --interval must be an integer from 30 through 60 seconds/,
+    "inspect pre-validation error must name the pull request in the inspect voice",
+  );
+  assert.throws(
+    () => raw.tool.prepareArguments({ action: "watch", interval: "30" }),
+    /Error: --interval must be an integer from 30 through 60 seconds/,
+    "pre-validation error without a selector stays bare",
   );
   const validArguments = { action: "watch", pr: "17", interval: 30 };
   assert.equal(raw.tool.prepareArguments(validArguments), validArguments);

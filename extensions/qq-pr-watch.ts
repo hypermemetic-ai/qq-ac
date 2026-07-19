@@ -195,7 +195,16 @@ export default function register(pi, deps = {}) {
     },
     prepareArguments(args) {
       if (args?.interval !== undefined && !Number.isInteger(args.interval)) {
-        throw new Error(INTERVAL_ERROR);
+        const pr =
+          typeof args?.pr === "string" && args.pr !== "" ? args.pr : undefined;
+        if (pr === undefined) {
+          throw new Error(INTERVAL_ERROR);
+        }
+        throw new Error(
+          args?.action === "inspect"
+            ? inspectFailureMessage(pr, INTERVAL_ERROR)
+            : watchFailureMessage(pr, INTERVAL_ERROR),
+        );
       }
       return args;
     },
