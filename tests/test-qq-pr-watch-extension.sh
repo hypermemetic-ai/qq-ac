@@ -140,6 +140,7 @@ function createHarness(sequence = [], options = {}) {
   assert.equal(toolCount, 1, "extension did not register exactly one tool");
   assert.equal(tool?.name, "qq_pr_watch", "extension registered the wrong tool");
   assert.equal(typeof tool?.execute, "function", "tool execute handler is missing");
+  assert.equal(typeof tool?.prepareArguments, "function", "raw argument guard is missing");
   assert.equal(typeof shutdown, "function", "session_shutdown handler is missing");
   assert.deepEqual(tool.parameters.required, ["action", "pr"]);
   assert.deepEqual(tool.parameters.properties.action.enum, ["watch", "inspect"]);
@@ -287,6 +288,15 @@ async function testAlreadyTerminalAndRearm() {
 }
 
 async function testIntervals() {
+  const raw = createHarness();
+  assert.throws(
+    () => raw.tool.prepareArguments({ action: "watch", pr: "17", interval: "30" }),
+    /integer from 30 through 60/,
+    "Pi pre-validation could sanitise a string interval",
+  );
+  const validArguments = { action: "watch", pr: "17", interval: 30 };
+  assert.equal(raw.tool.prepareArguments(validArguments), validArguments);
+
   for (const [interval, milliseconds] of [
     [undefined, 30_000],
     [30, 30_000],

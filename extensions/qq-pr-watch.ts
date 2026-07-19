@@ -6,6 +6,8 @@ const UNREADABLE_STATE =
   "GitHub did not return a readable pull-request state; no terminal notification was emitted.";
 const UNSUPPORTED_STATE =
   "GitHub returned an unsupported pull-request state.";
+const INTERVAL_ERROR =
+  "--interval must be an integer from 30 through 60 seconds";
 const TERMINAL_STATES = new Set(["MERGED", "CLOSED"]);
 const KNOWN_STATES = new Set(["OPEN", ...TERMINAL_STATES]);
 
@@ -176,11 +178,17 @@ export default function register(pi, deps = {}) {
       required: ["action", "pr"],
       additionalProperties: false,
     },
+    prepareArguments(args) {
+      if (args?.interval !== undefined && !Number.isInteger(args.interval)) {
+        throw new Error(INTERVAL_ERROR);
+      }
+      return args;
+    },
     async execute(_toolCallId, params, signal) {
       const interval = params.interval ?? 30;
       if (!Number.isInteger(interval) || interval < 30 || interval > 60) {
         return result(
-          "--interval must be an integer from 30 through 60 seconds",
+          INTERVAL_ERROR,
           details("error", params.pr, undefined, 0),
         );
       }
