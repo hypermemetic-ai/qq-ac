@@ -242,12 +242,15 @@ fi
 if grep -Fq -- 'herdr agent start' "$ROOT/skills/agent-messaging/SKILL.md"; then
   fail "agent-messaging reintroduced delegate lifecycle machinery"
 fi
-grep -Fq -- 'herdr agent wait <name> --status idle' \
-  "$ROOT/skills/agent-messaging/SKILL.md"
+if tr '\n\t' '  ' <"$ROOT/skills/agent-messaging/SKILL.md" | \
+  grep -qE -- 'herdr (pane run|agent send|agent wait|agent list|agent get|agent read)'; then
+  fail "agent-messaging reintroduced a herdr inter-agent path (amended T-109: intercom-only)"
+fi
+grep -Fq -- 'pi-intercom' "$ROOT/skills/agent-messaging/SKILL.md"
 grep -Fq -- 'herdr notification show "<title>" --body "<body>" --sound <sound>' \
   "$ROOT/skills/agent-messaging/SKILL.md"
 tr '\n\t' '  ' <"$ROOT/CONCEPTS.md" | \
-  grep -Fq "**agent messaging** — Direct coordination between live agents across runtimes through herdr's list, send, read, and wait operations, plus operator-visible notifications outside any transcript. It does not start, own, or retire agents."
+  grep -qE '\*\*agent messaging\*\* — Direct live-agent coordination through pi-intercom plus operator-visible herdr notifications outside transcripts\. It does not start, own, or retire agents\.'
 tr '\n\t' '  ' <"$ROOT/CONCEPTS.md" | \
   grep -qE "\\*\\*work order\\*\\* — One complete work-order brief per delegated ticket: the delegate's complete orientation and the plan bound, carrying .*the required completion envelope\\."
 tr '\n\t' '  ' <"$ROOT/CONCEPTS.md" | \
