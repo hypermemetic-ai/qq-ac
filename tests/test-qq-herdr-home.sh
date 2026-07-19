@@ -236,6 +236,8 @@ fi
 grep -Fq 'managed Backlog markdown under `backlog/`' "$ROOT/skills/deliver-change/SKILL.md"
 tr '\n\t' '  ' <"$ROOT/skills/deliver-change/SKILL.md" | \
   grep -qE 'Verify zero path overlap .*`git diff --name-only HEAD origin/main`.*untracked list'
+tr '\n\t' '  ' <"$ROOT/skills/deliver-change/SKILL.md" | \
+  grep -qE 'Any tracked modification, any untracked entry outside `backlog/`, or any +path overlap still blocks the synchronization'
 if tr '\n\t' '  ' <"$ROOT/skills/deliver-change/SKILL.md" | \
   grep -qE 'one such checkout, an empty `git status'; then
   fail 'deliver-change step 11 regressed to the strict all-untracked sync rail (T-73)'

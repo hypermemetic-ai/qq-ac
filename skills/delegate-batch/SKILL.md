@@ -107,6 +107,9 @@ status_dir="${TMPDIR:-/tmp}/qq-delegates${repo_root}"
 status_file="${status_dir}/<dispatcher-workspace-id>-<batch-label>.status"
 ```
 
+Pass the same label to the owned publisher with
+`bin/qq-status --batch-label <batch-label>`.
+
 The dispatcher chooses a short batch label unique within the project home (for
 example, `wM-t107-followon.status`); two dispatchers sharing that project home
 must not write the same file, and the suffix form keeps each batch's detail file
