@@ -72,9 +72,9 @@ observed the intended subject.
 derives findings from the Change and its intent without inheriting the author's
 working context or conclusions.
 
-**agent messaging** — Direct live-agent coordination through pi-intercom, with
-herdr retained for Codex delegates until T-95 lands, plus operator-visible
-notifications outside transcripts. It does not start, own, or retire agents.
+**agent messaging** — Direct live-agent coordination through pi-intercom plus
+operator-visible herdr notifications outside transcripts. It does not start,
+own, or retire agents.
 
 **work order** — One complete work-order brief per delegated ticket: the
 delegate's complete orientation and the plan bound, carrying the ticket and its
