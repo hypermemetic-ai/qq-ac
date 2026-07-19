@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Publish one delegate stage boundary to the detail file and Herdr glass.
+# Publish one delegate stage boundary to the Herdr glass (the detail-file protocol was deleted under T-116, decision-3; this tool is removed entirely at T-95).
 # shellcheck disable=SC1091,SC2016
 set -euo pipefail
 
@@ -18,13 +18,11 @@ if [ "${1:-}" = inspect ]; then
 fi
 event="${1:-}"
 [ -n "$event" ] || qq_engine_error \
-  'usage: qq-status [inspect] <queued|dispatched|working|envelope-received|envelope-verified|review|pr-open|blocked|failed|terminal> --repo <path> --dispatcher-workspace <id> [--batch-label <label>] --work-session <id> --pane <id> --agent <label> --ticket <id> --label <text> [details] [--dry-run]'
+  'usage: qq-status [inspect] <queued|dispatched|working|envelope-received|envelope-verified|review|pr-open|blocked|failed|terminal> --repo <path> --dispatcher-workspace <id> --work-session <id> --pane <id> --agent <label> --ticket <id> --label <text> [details] [--dry-run]'
 shift
 
 repo=""
 dispatcher_workspace=""
-batch_label=""
-batch_label_provided=false
 work_session=""
 pane=""
 agent=""
@@ -32,15 +30,9 @@ ticket=""
 label=""
 runtime=unavailable
 handle=unavailable
-events_path=unavailable
-stderr_path=unavailable
-checks=unavailable
 pr_number=""
-pr_url=""
-final_checks=unavailable
 reason=""
 round=""
-boundary_time=""
 dry_run=false
 
 while [ "$#" -gt 0 ]; do
@@ -53,12 +45,6 @@ while [ "$#" -gt 0 ]; do
     --dispatcher-workspace)
       [ "$#" -ge 2 ] || qq_engine_error '--dispatcher-workspace requires an id'
       dispatcher_workspace="$2"
-      shift 2
-      ;;
-    --batch-label)
-      [ "$#" -ge 2 ] || qq_engine_error '--batch-label requires a label'
-      batch_label="$2"
-      batch_label_provided=true
       shift 2
       ;;
     --work-session)
@@ -98,17 +84,14 @@ while [ "$#" -gt 0 ]; do
       ;;
     --events)
       [ "$#" -ge 2 ] || qq_engine_error '--events requires a path or unavailable'
-      events_path="$2"
       shift 2
       ;;
     --stderr)
       [ "$#" -ge 2 ] || qq_engine_error '--stderr requires a path or unavailable'
-      stderr_path="$2"
       shift 2
       ;;
     --checks)
       [ "$#" -ge 2 ] || qq_engine_error '--checks requires a summary'
-      checks="$2"
       shift 2
       ;;
     --pr)
@@ -118,12 +101,10 @@ while [ "$#" -gt 0 ]; do
       ;;
     --url)
       [ "$#" -ge 2 ] || qq_engine_error '--url requires a value'
-      pr_url="$2"
       shift 2
       ;;
     --final-checks)
       [ "$#" -ge 2 ] || qq_engine_error '--final-checks requires a summary'
-      final_checks="$2"
       shift 2
       ;;
     --reason)
@@ -138,7 +119,6 @@ while [ "$#" -gt 0 ]; do
       ;;
     --at)
       [ "$#" -ge 2 ] || qq_engine_error '--at requires a timestamp'
-      boundary_time="$2"
       shift 2
       ;;
     --dry-run)
@@ -155,12 +135,11 @@ for required_name in repo dispatcher_workspace work_session pane agent ticket la
   [ -n "${!required_name}" ] \
     || qq_engine_error "--${required_name//_/-} is required"
 done
+# --repo remains required for interface stability even though Herdr does not
+# consume it.
+: "$repo"
 [[ "$dispatcher_workspace" =~ ^[A-Za-z0-9._:-]+$ ]] \
   || qq_engine_error '--dispatcher-workspace contains unsafe path characters'
-if [ "$batch_label_provided" = true ]; then
-  [[ "$batch_label" =~ ^[A-Za-z0-9-]{1,30}$ ]] \
-    || qq_engine_error '--batch-label must match [A-Za-z0-9-]{1,30}'
-fi
 [[ "$agent" =~ ^[A-Za-z0-9._-]+$ ]] \
   || qq_engine_error '--agent must match [A-Za-z0-9._-]+'
 for single_line in "$work_session" "$pane" "$ticket" "$label" "$runtime" "$handle"; do
@@ -233,34 +212,9 @@ case "$event" in
   *) qq_engine_error "unsupported status event: $event" ;;
 esac
 
-boundary_time="${boundary_time:-$(date -u +'%Y-%m-%dT%H:%M:%SZ')}"
-if ! qq_resolve_bin git; then
-  qq_engine_error "$QQ_BIN_ERROR"
-fi
-git_bin="$QQ_BIN_RESULT"
-common_dir="$({ "$git_bin" -C "$repo" rev-parse --path-format=absolute --git-common-dir 2>/dev/null || true; })"
-[ -n "$common_dir" ] || qq_engine_error "not a Git checkout: $repo"
-repo_root="$(cd "$(dirname "$common_dir")" 2>/dev/null && pwd -P)" \
-  || qq_engine_error "cannot resolve Repository root from: $repo"
-status_base="${TMPDIR:-/tmp}/qq-delegates"
-status_dir="$status_base$repo_root"
-status_name="$dispatcher_workspace"
-if [ "$batch_label_provided" = true ]; then
-  status_name="$dispatcher_workspace-$batch_label"
-fi
-status_file="$status_dir/$status_name.status"
-canonical_status_base="$(readlink -m -- "$status_base" 2>/dev/null || true)"
-resolved_status_dir="$(readlink -m -- "$status_dir" 2>/dev/null || true)"
-if [ -z "$canonical_status_base" ] || [ -z "$resolved_status_dir" ]; then
-  qq_engine_error 'cannot resolve the derived status path'
-fi
-expected_status_dir="$canonical_status_base$repo_root"
-
 base_state="$("$QQ_ENGINE_JQ" -cn \
   --arg event "$event" \
   --arg stage "$stage" \
-  --arg repo_root "$repo_root" \
-  --arg status_file "$status_file" \
   --arg dispatcher_workspace "$dispatcher_workspace" \
   --arg work_session "$work_session" \
   --arg pane "$pane" \
@@ -268,114 +222,21 @@ base_state="$("$QQ_ENGINE_JQ" -cn \
   '{
     event:$event,
     stage:$stage,
-    repo_root:$repo_root,
-    status_file:$status_file,
     dispatcher_workspace:$dispatcher_workspace,
     work_session:$work_session,
     pane:$pane,
     agent:$agent
   }')"
 
-if [ -L "$status_base" ] || [ "$resolved_status_dir" != "$expected_status_dir" ]; then
-  state="$("$QQ_ENGINE_JQ" -cn --argjson base "$base_state" \
-    '$base + {current_state:"status path contains an intermediate symlink"}')"
-  qq_engine_refuse \
-    'The derived status path contains an intermediate symlink. Leave it untouched and resolve the unexpected filesystem state; visibility glass never justifies overwriting an unexplained object.' \
-    "$state"
-fi
-if [ -L "$status_dir" ] || { [ -e "$status_dir" ] && [ ! -d "$status_dir" ]; }; then
-  state="$("$QQ_ENGINE_JQ" -cn --argjson base "$base_state" \
-    '$base + {current_state:"status directory is not a real directory"}')"
-  qq_engine_refuse \
-    'The derived status directory is not a real directory. Leave it untouched, resolve the unexpected filesystem state, and retry; the engine will not follow a replacement link.' \
-    "$state"
-fi
-if [ -L "$status_file" ] || { [ -e "$status_file" ] && [ ! -f "$status_file" ]; }; then
-  state="$("$QQ_ENGINE_JQ" -cn --argjson base "$base_state" \
-    '$base + {current_state:"status file is not a regular file"}')"
-  qq_engine_refuse \
-    'The derived status file is not a regular file. Leave it untouched, resolve the unexpected filesystem state, and retry; visibility glass never justifies overwriting an unexplained object.' \
-    "$state"
-fi
-
 if [ "$mode" = inspect ] || [ "$dry_run" = true ]; then
-  qq_engine_done 'status transition inspected; no detail file or Herdr state was changed' "$base_state"
+  qq_engine_done 'status transition inspected; no Herdr state was changed' "$base_state"
 fi
 
 notes=()
-detail_written=false
-if ! mkdir -p "$status_dir" 2>/dev/null; then
-  notes+=('detail file unavailable: could not create the derived status directory')
-else
-  temporary="$(mktemp "$status_dir/.$status_name.status.XXXXXX" 2>/dev/null || true)"
-  if [ -z "$temporary" ]; then
-    notes+=('detail file unavailable: could not create an atomic temporary file')
-  else
-    write_ok=true
-    if [ -f "$status_file" ]; then
-      if ! awk \
-        -v begin="--- qq-delegate:$agent ---" \
-        -v end="--- /qq-delegate:$agent ---" '
-          $0 == begin { skipping = 1; next }
-          $0 == end { skipping = 0; next }
-          !skipping { print }
-        ' "$status_file" >"$temporary"; then
-        write_ok=false
-      fi
-    fi
-    if [ "$write_ok" = true ] && [ "$event" != terminal ]; then
-      temporary_has_content=false
-      if [ -s "$temporary" ]; then
-        temporary_has_content=true
-      fi
-      {
-        if [ "$temporary_has_content" = true ]; then
-          printf '\n'
-        fi
-        printf '%s\n' "--- qq-delegate:$agent ---"
-        printf 'ticket: %s\n' "$ticket"
-        printf 'label: %s\n' "$label"
-        printf 'stage: %s since %s\n' "$stage" "$boundary_time"
-        printf 'runtime: %s\n' "$runtime"
-        printf 'steering: %s\n' "$handle"
-        printf 'events: %s\n' "$events_path"
-        printf 'stderr: %s\n' "$stderr_path"
-        if [ -n "$reason" ]; then
-          printf 'reason: %s\n' "$reason"
-        fi
-        printf 'envelope checks: %s\n' "$checks"
-        if [ -n "$pr_number" ] || [ -n "$pr_url" ]; then
-          printf 'pull request: #%s %s\n' "$pr_number" "$pr_url"
-        fi
-        printf 'final checks: %s\n' "$final_checks"
-        printf '%s\n' "--- /qq-delegate:$agent ---"
-      } >>"$temporary" || write_ok=false
-    fi
-    if [ "$write_ok" = true ] \
-      && mv -f -- "$temporary" "$status_file" 2>/dev/null; then
-      resolved_written_status_dir="$(realpath -- "$status_dir" 2>/dev/null || true)"
-      # Full mid-flight TOCTOU prevention is out of scope for a non-gating Bash
-      # glass engine; this outcome guard prevents a redirected write persisting.
-      if [ "$resolved_written_status_dir" != "$expected_status_dir" ]; then
-        rm -f -- "$status_file" 2>/dev/null || true
-        state="$("$QQ_ENGINE_JQ" -cn --argjson base "$base_state" \
-          '$base + {current_state:"status write escaped through an intermediate symlink"}')"
-        qq_engine_refuse \
-          'The derived status path contains an intermediate symlink. Leave it untouched and resolve the unexpected filesystem state; visibility glass never justifies overwriting an unexplained object.' \
-          "$state"
-      fi
-      detail_written=true
-    else
-      rm -f -- "$temporary"
-      notes+=('detail file unavailable: atomic rewrite failed')
-    fi
-  fi
-fi
-
 herdr_available=true
 if ! qq_resolve_bin herdr; then
   herdr_available=false
-  notes+=('herdr unavailable: Herdr reporting was a no-op; continue from the detail file and transcript')
+  notes+=('herdr unavailable: Herdr reporting was a no-op; continue from the transcript')
 else
   herdr_bin="$QQ_BIN_RESULT"
 fi
@@ -396,7 +257,7 @@ next_sequence() {
 
 note_herdr_failure() {
   if [ "$herdr_failure_noted" = false ]; then
-    notes+=('herdr call failed: Herdr reporting degraded; continue from the detail file and transcript')
+    notes+=('herdr call failed: Herdr reporting degraded; continue from the transcript')
     herdr_failure_noted=true
   fi
 }
@@ -448,12 +309,10 @@ for sequence in "${sequences[@]}"; do
 done
 state="$("$QQ_ENGINE_JQ" -cn \
   --argjson base "$base_state" \
-  --argjson detail_written "$detail_written" \
   --argjson herdr_available "$herdr_available" \
   --argjson sequences "$sequences_json" \
   --argjson notes "$notes_json" \
   '$base + {
-    detail_written:$detail_written,
     herdr_available:$herdr_available,
     sequences:$sequences,
     notes:$notes,
@@ -463,4 +322,4 @@ state="$("$QQ_ENGINE_JQ" -cn \
 if [ "${#notes[@]}" -gt 0 ]; then
   qq_engine_done 'status transition completed with best-effort visibility degradation; see notes' "$state"
 fi
-qq_engine_done 'status transition published to the detail file and Herdr' "$state"
+qq_engine_done 'status transition published to Herdr' "$state"

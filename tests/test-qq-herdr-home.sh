@@ -194,7 +194,7 @@ if grep -Fq 'state every 5' "$ROOT/skills/deliver-change/SKILL.md"; then
 fi
 grep -Fq 'follow-on dispatch' "$ROOT/skills/deliver-change/SKILL.md"
 if grep -Fq 'observability pane' "$ROOT/skills/delegate-batch/SKILL.md"; then
-  fail 'delegate-batch must not reintroduce the observability pane (operator UAT rejected it; the status surface owns delegate visibility)'
+  fail 'delegate-batch must not reintroduce the observability pane (operator UAT rejected it; delegate visibility lives in transcripts and pi-intercom until T-95)'
 fi
 tr '\n\t' '  ' <"$ROOT/skills/deliver-change/SKILL.md" | \
   grep -qE 'do not run `qq-herdr-home +focus-board`'
