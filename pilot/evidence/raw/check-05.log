@@ -3,11 +3,18 @@ verdict: PASS
 boundary: The wrapper's GNU timeout is outermost, the qq subreaper owns native Landstrip beneath it, and a static mock Pi creates named tool, MCP, and double-forked orphan descendants. Only that observed descendant tree is inspected or cleaned.
 observations:
 {
-  "runId": "check-05-timeout-11",
+  "runId": "check-05-timeout-18",
   "exited": true,
   "exitCode": 124,
   "exitSignal": null,
   "exitElapsedMs": 1767,
+  "announcementsObserved": true,
+  "requiredAnnouncements": [
+    "pi",
+    "tool",
+    "mcp",
+    "orphan"
+  ],
   "terminated": true,
   "survivorsBeforeCleanup": [],
   "stderr": "[qq-pilot] role=reviewer policy=qq-pilot-reviewer-read-only-v1 scope=read-only boundary=landstrip landstrip=landstrip 0.17.30 timeout=1s\n",
@@ -20,16 +27,16 @@ observations:
       "terminated": true
     },
     {
-      "name": "mcp",
+      "name": "tool",
       "pidObserved": true,
-      "commandClass": "mcp",
+      "commandClass": "tool",
       "terminatedBeforeCleanup": true,
       "terminated": true
     },
     {
-      "name": "tool",
+      "name": "mcp",
       "pidObserved": true,
-      "commandClass": "tool",
+      "commandClass": "mcp",
       "terminatedBeforeCleanup": true,
       "terminated": true
     },

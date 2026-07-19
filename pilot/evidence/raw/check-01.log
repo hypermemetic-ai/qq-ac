@@ -1,7 +1,7 @@
 check: 1. Reviewer/researcher read-only confinement
 verdict: INCONCLUSIVE-UNDER-SUBSTRATE
-boundary: Every filesystem target first succeeded from the pilot parent inside Codex's allowed worktree/Git/tmp boundary and was then denied after crossing native Landstrip. Codex rejected the loopback listener itself, so the network subcase cannot be attributed.
-unresolved-risk: Codex also blocked the loopback control, so the network denial could not be attributed.
+boundary: Filesystem targets and network confinement are evaluated independently. Each writable parent control attributes its matching child denial to native Landstrip; a read-only parent control is inconclusive, while any observed child write or missing confinement observation makes the row FAIL regardless of the network result.
+unresolved-risk: The outer substrate made at least one filesystem control read-only, so the corresponding child denial cannot be attributed to Landstrip.
 observations:
 {
   "outerBaselines": [
@@ -11,10 +11,16 @@ observations:
     },
     {
       "path": "<GIT_COMMON_DIR>/.qq-pilot-baseline-2",
-      "ok": true
+      "ok": false,
+      "error": "EROFS: read-only file system, open '<GIT_COMMON_DIR>/.qq-pilot-baseline-2'"
     },
     {
       "path": "<GIT_WORKTREE_DIR>/.qq-pilot-baseline-2",
+      "ok": false,
+      "error": "EROFS: read-only file system, open '<GIT_WORKTREE_DIR>/.qq-pilot-baseline-2'"
+    },
+    {
+      "path": "<RUNTIME_ROOT>/.qq-pilot-baseline-2",
       "ok": true
     },
     {
@@ -22,10 +28,65 @@ observations:
       "ok": true
     }
   ],
+  "filesystemAssessment": {
+    "verdict": "INCONCLUSIVE-UNDER-SUBSTRATE",
+    "targets": [
+      {
+        "name": "repositoryWrite",
+        "verdict": "PASS",
+        "parentWritable": true,
+        "childResults": [
+          false,
+          false
+        ]
+      },
+      {
+        "name": "gitCommonWrite",
+        "verdict": "INCONCLUSIVE-UNDER-SUBSTRATE",
+        "parentWritable": false,
+        "parentError": "EROFS: read-only file system, open '<GIT_COMMON_DIR>/.qq-pilot-baseline-2'",
+        "childResults": [
+          false,
+          false
+        ]
+      },
+      {
+        "name": "gitWorktreeWrite",
+        "verdict": "INCONCLUSIVE-UNDER-SUBSTRATE",
+        "parentWritable": false,
+        "parentError": "EROFS: read-only file system, open '<GIT_WORKTREE_DIR>/.qq-pilot-baseline-2'",
+        "childResults": [
+          false,
+          false
+        ]
+      },
+      {
+        "name": "runtimeWrite",
+        "verdict": "PASS",
+        "parentWritable": true,
+        "childResults": [
+          false,
+          false
+        ]
+      },
+      {
+        "name": "escapeWrite",
+        "verdict": "PASS",
+        "parentWritable": true,
+        "childResults": [
+          false,
+          false
+        ]
+      }
+    ],
+    "childrenCompleted": true
+  },
   "loopbackBaseline": {
     "connected": false,
     "error": "listen EPERM: operation not permitted 127.0.0.1"
   },
+  "networkAssessment": "INCONCLUSIVE-UNDER-SUBSTRATE",
+  "failOpenRegressionGuard": true,
   "reviewer": {
     "exitCode": 0,
     "policy": "qq-pilot-reviewer-read-only-v1",
@@ -38,11 +99,11 @@ observations:
       },
       "gitCommonWrite": {
         "ok": false,
-        "errno": 13
+        "errno": 30
       },
       "gitWorktreeWrite": {
         "ok": false,
-        "errno": 13
+        "errno": 30
       },
       "runtimeWrite": {
         "ok": false,
@@ -74,11 +135,11 @@ observations:
       },
       "gitCommonWrite": {
         "ok": false,
-        "errno": 13
+        "errno": 30
       },
       "gitWorktreeWrite": {
         "ok": false,
-        "errno": 13
+        "errno": 30
       },
       "runtimeWrite": {
         "ok": false,

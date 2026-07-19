@@ -1,15 +1,30 @@
 check: 6. SIGINT/SIGTERM/pane-close signal cleanup
 verdict: PASS
-boundary: Signals target only each check's dedicated timeout leader. SIGHUP is the Herdr-pane-closure signal-path simulation; no live Herdr pane or unrelated PID is touched.
+boundary: Each signal case must announce and expose Pi, Landstrip, timeout, tool, MCP, and orphan descendants before cleanup can pass. Signals target only that dedicated timeout leader. SIGHUP simulates Herdr pane closure; no live Herdr pane or unrelated PID is touched.
 observations:
 [
   {
     "signal": "SIGINT",
-    "runId": "check-06-sigint-12",
+    "requiredObservedNames": [
+      "pi",
+      "landstrip",
+      "timeout",
+      "tool",
+      "mcp",
+      "orphan"
+    ],
+    "runId": "check-06-sigint-19",
     "exited": true,
     "exitCode": 130,
     "exitSignal": null,
-    "exitElapsedMs": 796,
+    "exitElapsedMs": 803,
+    "announcementsObserved": true,
+    "requiredAnnouncements": [
+      "pi",
+      "tool",
+      "mcp",
+      "orphan"
+    ],
     "terminated": true,
     "survivorsBeforeCleanup": [],
     "stderr": "[qq-pilot] role=reviewer policy=qq-pilot-reviewer-read-only-v1 scope=read-only boundary=landstrip landstrip=landstrip 0.17.30 timeout=30s\n",
@@ -67,11 +82,26 @@ observations:
   },
   {
     "signal": "SIGTERM",
-    "runId": "check-06-sigterm-13",
+    "requiredObservedNames": [
+      "pi",
+      "landstrip",
+      "timeout",
+      "tool",
+      "mcp",
+      "orphan"
+    ],
+    "runId": "check-06-sigterm-20",
     "exited": true,
     "exitCode": 143,
     "exitSignal": null,
-    "exitElapsedMs": 804,
+    "exitElapsedMs": 802,
+    "announcementsObserved": true,
+    "requiredAnnouncements": [
+      "pi",
+      "tool",
+      "mcp",
+      "orphan"
+    ],
     "terminated": true,
     "survivorsBeforeCleanup": [],
     "stderr": "[qq-pilot] role=reviewer policy=qq-pilot-reviewer-read-only-v1 scope=read-only boundary=landstrip landstrip=landstrip 0.17.30 timeout=30s\n",
@@ -129,11 +159,26 @@ observations:
   },
   {
     "signal": "SIGHUP",
-    "runId": "check-06-sighup-14",
+    "requiredObservedNames": [
+      "pi",
+      "landstrip",
+      "timeout",
+      "tool",
+      "mcp",
+      "orphan"
+    ],
+    "runId": "check-06-sighup-21",
     "exited": true,
     "exitCode": 129,
     "exitSignal": null,
-    "exitElapsedMs": 813,
+    "exitElapsedMs": 826,
+    "announcementsObserved": true,
+    "requiredAnnouncements": [
+      "pi",
+      "tool",
+      "mcp",
+      "orphan"
+    ],
     "terminated": true,
     "survivorsBeforeCleanup": [],
     "stderr": "[qq-pilot] role=reviewer policy=qq-pilot-reviewer-read-only-v1 scope=read-only boundary=landstrip landstrip=landstrip 0.17.30 timeout=30s\n",
