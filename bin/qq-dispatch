@@ -103,7 +103,7 @@ tree_supervisor="$bin_dir/lib/qq-process-tree-supervisor.py"
 [[ -f "$tree_supervisor" && -x "$tree_supervisor" ]] \
   || fail 71 "process-tree supervisor is unavailable"
 
-runtime_root_input="${QQ_DISPATCH_RUNTIME_ROOT:-${TMPDIR:-/tmp}/qq-dispatch-runtime}"
+runtime_root_input="${QQ_DISPATCH_RUNTIME_ROOT:-${TMPDIR:-/tmp}/qq-delegate-runtime}"
 [[ "$runtime_root_input" == /* ]] \
   || fail 68 "QQ_DISPATCH_RUNTIME_ROOT must be absolute"
 mkdir -p -- "$runtime_root_input" \
@@ -136,8 +136,10 @@ if [[ -n "${PI_SUBAGENT_STRUCTURED_OUTPUT_CAPTURE:-}" ]]; then
   [[ -n "$capture_leaf" && "$capture_leaf" != "." && "$capture_leaf" != ".." ]] \
     || fail 68 "structured-output capture filename is invalid"
   structured_output_capture="$capture_parent/$capture_leaf"
-  path_is_within "$structured_output_capture" "$runtime_root" \
-    || fail 68 "structured-output capture path must stay beneath the runtime root"
+  if ! path_is_within "$structured_output_capture" "$runtime_root" \
+    && ! path_is_within "$structured_output_capture" "$worktree"; then
+    fail 68 "structured-output capture path must stay beneath the runtime root or assigned worktree"
+  fi
 fi
 
 run_token="${PI_SUBAGENT_RUN_ID:-manual}"

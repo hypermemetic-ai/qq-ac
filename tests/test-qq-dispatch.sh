@@ -208,6 +208,23 @@ PY
   fi
 done
 
+default_tmp="$tmp/default-tmp"
+default_runtime="$default_tmp/qq-delegate-runtime"
+(
+  cd "$ROOT"
+  env -u QQ_DISPATCH_RUNTIME_ROOT \
+    TMPDIR="$default_tmp" \
+    PI_SUBAGENT_CHILD_AGENT=implementer \
+    PI_SUBAGENT_RUN_ID=default-runtime-smoke \
+    FAKE_POLICY_SNAPSHOT="$tmp/default-runtime-policy.json" \
+    "$DISPATCH" --json
+) >"$tmp/default-runtime.stdout" 2>"$tmp/default-runtime.stderr"
+assert_file_contains "$tmp/default-runtime.stdout" \
+  'pi-live-event role=implementer'
+jq -e --arg runtime "$default_runtime" \
+  '.filesystem.allowWrite | index($runtime) != null' \
+  "$tmp/default-runtime-policy.json" >/dev/null
+
 # Exercise distinct common/per-worktree Git metadata even when the checkout
 # running this suite is a primary checkout, as it is in ordinary CI clones.
 fixture_primary="$tmp/linked-fixture-primary"
@@ -264,6 +281,24 @@ jq -e \
     ]
   ' "$tmp/linked-policy.json" >/dev/null
 
+fixture_capture_dir="$fixture_worktree/.pi-subagents/artifacts"
+fixture_capture_path="$fixture_capture_dir/same-worktree-envelope.json"
+mkdir -p "$fixture_capture_dir"
+(
+  cd "$fixture_worktree"
+  PI_SUBAGENT_CHILD_AGENT=reviewer \
+  PI_SUBAGENT_RUN_ID=linked-capture-smoke \
+  PI_SUBAGENT_STRUCTURED_OUTPUT_CAPTURE="$fixture_capture_path" \
+  QQ_DISPATCH_RUNTIME_ROOT="$fixture_runtime" \
+  FAKE_POLICY_SNAPSHOT="$tmp/linked-capture-policy.json" \
+    "$fixture_worktree/bin/qq-dispatch" --json
+) >"$tmp/linked-capture.stdout" 2>"$tmp/linked-capture.stderr"
+assert_file_contains "$tmp/linked-capture.stdout" \
+  'pi-live-event role=reviewer'
+jq -e --arg capture "$fixture_capture_path" \
+  '.filesystem.allowWrite == [$capture]' \
+  "$tmp/linked-capture-policy.json" >/dev/null
+
 # Exercise the production shape: the canonical adapter and its policy sources
 # remain in the primary checkout while pi-subagents starts the child in a
 # linked worktree from the same Repository.
@@ -293,6 +328,22 @@ jq -e \
       $runtime, $worktree, $common, $worktree_git, "/dev/null"
     ]
   ' "$tmp/canonical-policy.json" >/dev/null
+
+canonical_capture_path="$fixture_capture_dir/canonical-envelope.json"
+(
+  cd "$fixture_worktree"
+  PI_SUBAGENT_CHILD_AGENT=reviewer \
+  PI_SUBAGENT_RUN_ID=canonical-capture-smoke \
+  PI_SUBAGENT_STRUCTURED_OUTPUT_CAPTURE="$canonical_capture_path" \
+  QQ_DISPATCH_RUNTIME_ROOT="$canonical_runtime" \
+  FAKE_POLICY_SNAPSHOT="$tmp/canonical-capture-policy.json" \
+    "$fixture_primary/bin/qq-dispatch" --json
+) >"$tmp/canonical-capture.stdout" 2>"$tmp/canonical-capture.stderr"
+assert_file_contains "$tmp/canonical-capture.stdout" \
+  'pi-live-event role=reviewer'
+jq -e --arg capture "$canonical_capture_path" \
+  '.filesystem.allowWrite == [$capture]' \
+  "$tmp/canonical-capture-policy.json" >/dev/null
 
 jq -s -e '
   length == 3
@@ -344,6 +395,37 @@ run_failure() {
   set -e
   [ "$status" -ne 0 ] || fail "$label unexpectedly succeeded"
 }
+
+run_capture_refusal() {
+  local label="$1"
+  local capture="$2"
+  : >"$FAKE_PI_ARGS"
+  set +e
+  (
+    cd "$ROOT"
+    HOME="$tmp/home" \
+      PI_SUBAGENT_CHILD_AGENT=reviewer \
+      PI_SUBAGENT_RUN_ID="$label" \
+      PI_SUBAGENT_STRUCTURED_OUTPUT_CAPTURE="$capture" \
+        "$DISPATCH" --json
+  ) >"$tmp/$label.stdout" 2>"$tmp/$label.stderr"
+  local status=$?
+  set -e
+  assert_equal 68 "$status" "$label did not exit 68"
+  assert_file_contains "$tmp/$label.stderr" \
+    'structured-output capture path must stay beneath the runtime root or assigned worktree'
+  [ ! -s "$FAKE_PI_ARGS" ] || fail "$label launched Pi"
+}
+
+home_capture_dir="$tmp/home/capture"
+mkdir -p "$home_capture_dir"
+run_capture_refusal home-capture-refusal \
+  "$home_capture_dir/envelope.json"
+
+escape_capture_dir="$tmp/escaped-capture"
+mkdir -p "$escape_capture_dir"
+run_capture_refusal capture-dotdot-refusal \
+  "$capture_dir/../../escaped-capture/envelope.json"
 
 run_failure missing-role "$ROOT" \
   env -u PI_SUBAGENT_CHILD_AGENT "$DISPATCH" --json

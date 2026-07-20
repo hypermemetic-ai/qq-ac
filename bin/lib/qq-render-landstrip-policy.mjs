@@ -37,6 +37,14 @@ function canonicalDirectory(input, label) {
   return resolved;
 }
 
+function pathIsStrictlyWithin(candidate, parent) {
+  const relative = path.relative(parent, candidate);
+  return relative !== ""
+    && relative !== ".."
+    && !relative.startsWith(`..${path.sep}`)
+    && !path.isAbsolute(relative);
+}
+
 function writePrivateJson(filePath, value) {
   fs.mkdirSync(path.dirname(filePath), { recursive: true, mode: 0o700 });
   const temporary = `${filePath}.tmp-${process.pid}`;
@@ -60,9 +68,9 @@ if (captureInput) {
   if (!captureLeaf || captureLeaf === "." || captureLeaf === "..") fail("structured-output capture filename is invalid");
   const captureParent = canonicalDirectory(path.dirname(captureInput), "structured-output capture directory");
   structuredOutputCapture = path.join(captureParent, captureLeaf);
-  const relativeCapture = path.relative(runtimeRoot, structuredOutputCapture);
-  if (relativeCapture === "" || relativeCapture.startsWith(`..${path.sep}`) || relativeCapture === ".." || path.isAbsolute(relativeCapture)) {
-    fail("structured-output capture path must stay beneath the runtime root");
+  if (!pathIsStrictlyWithin(structuredOutputCapture, runtimeRoot)
+    && !pathIsStrictlyWithin(structuredOutputCapture, worktree)) {
+    fail("structured-output capture path must stay beneath the runtime root or assigned worktree");
   }
   try {
     if (fs.lstatSync(structuredOutputCapture).isSymbolicLink()) fail("structured-output capture path may not be a symlink");
