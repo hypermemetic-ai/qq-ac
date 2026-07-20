@@ -405,9 +405,19 @@ aggregate_tree() {
 board_temp=
 reads_tmp=
 
+# Disposal is a move into the cache-local trash, never a recursive delete:
+# a guard mis-match costs a recoverable move, not rm -rf on a checkout.
+# Trash expiry rides qq-reap's weekly debris scan.
+dispose_dir() {
+  local target="$1"
+  [ -d "$target" ] || return 0
+  mkdir -p -- "$board_parent/.trash" || return 1
+  mv -- "$target" "$board_parent/.trash/${target##*/}.$(date +%s).$RANDOM"
+}
+
 cleanup_materialization() {
   case "$board_temp" in
-    "$board_parent"/.*) rm -rf -- "$board_temp" ;;
+    "$board_parent"/.*) dispose_dir "$board_temp" 2>/dev/null || true ;;
   esac
   if [ -n "$reads_tmp" ]; then
     rm -f -- "$reads_tmp"
@@ -586,48 +596,73 @@ materialize_board() {
   done
 
   # Publish atomically: scratch_root is a symlink swapped onto a complete
-  # generation by rename, so a renderer always sees a whole board. A stale
-  # directory generation from before the symlink scheme is removed first.
-  if [ -e "$scratch_root" ] && [ ! -L "$scratch_root" ]; then
+  # generation by rename, so a renderer always sees a whole board.
+  previous_target=
+  if [ -L "$scratch_root" ]; then
+    if ! previous_target="$(readlink -f -- "$scratch_root" 2>/dev/null)"; then
+      append_note "Could not resolve the previous scratch target; replacing the link without disposal."
+      previous_target=
+    fi
+  elif [ -e "$scratch_root" ]; then
+    # A stale directory generation from before the symlink scheme is
+    # disposed like any other generation.
     case "$scratch_root" in
-      "$board_parent"/?*) rm -rf -- "$scratch_root" ;;
+      "$board_parent"/?*)
+        dispose_dir "$scratch_root" \
+          || qq_engine_error "Could not dispose of the stale scratch directory: $scratch_root"
+        ;;
     esac
   fi
+
+  # An unchanged aggregate is not republished: the watch loop only swaps
+  # the generation when the board actually changed.
+  if [ -n "$previous_target" ] && [ -d "$previous_target/backlog" ] \
+    && diff -rq "$board_temp/backlog" "$previous_target/backlog" >/dev/null 2>&1; then
+    if dispose_dir "$board_temp"; then
+      board_temp=
+      append_note 'Board unchanged; kept the current generation.'
+      return 0
+    fi
+    qq_engine_error 'Could not dispose of the unchanged scratch generation.'
+  fi
+
   link_temp="$(mktemp -u "$board_parent/.${repo_key}.link.XXXXXX")" \
     || qq_engine_error 'Could not reserve the scratch-board link name.'
   ln -s -- "$board_temp" "$link_temp" \
     || qq_engine_error 'Could not stage the scratch-board link.'
-  # Canonicalize the prior target before reaping: a lexical match would let
-  # a malformed link aim rm -rf outside the cache.
-  previous_target="$(readlink -f -- "$scratch_root" 2>/dev/null || true)"
   if ! mv -T -- "$link_temp" "$scratch_root"; then
     rm -f -- "$link_temp"
     qq_engine_error 'Could not publish the scratch board tree.'
   fi
   board_temp=
-  # Reap eligibility is ownership by construction: only this Repository's
-  # own generations, never another cache entry or anything touching a
-  # listed checkout.
-  reap_target=
+
+  # Disposal eligibility is ownership by construction: a direct child
+  # generation of this Repository (mktemp's six slash-free characters),
+  # intersecting no listed checkout in either direction.
+  dispose_target=
   case "$previous_target" in
-    "$board_parent"/\."$repo_key".gen.*)
-      reap_target="$previous_target"
+    "$board_parent"/\."$repo_key".gen.??????)
+      dispose_target="$previous_target"
       for worktree_path in "${worktree_paths[@]}"; do
-        case "$reap_target" in
-          "$worktree_path" | "$worktree_path"/*)
-            reap_target=
-            break
-            ;;
-        esac
+        if [ "$dispose_target" = "$worktree_path" ] \
+          || [[ "$dispose_target" = "$worktree_path"/* ]] \
+          || [[ "$worktree_path" = "$dispose_target"/* ]]; then
+          dispose_target=
+          break
+        fi
       done
       ;;
   esac
-  if [ -n "$reap_target" ]; then
-    board_temp="$reap_target"
-    rm -rf -- "$board_temp"
-    board_temp=
+  if [ -n "$dispose_target" ]; then
+    board_temp="$dispose_target"
+    if dispose_dir "$board_temp"; then
+      board_temp=
+    else
+      board_temp=
+      append_note "Could not dispose of the previous scratch generation: $dispose_target"
+    fi
   elif [ -n "$previous_target" ]; then
-    append_note "Skipped reaping a scratch target outside this board's generations: $previous_target"
+    append_note "Skipped disposing of a scratch target outside this board's generations: $previous_target"
   fi
 }
 

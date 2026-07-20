@@ -186,6 +186,7 @@ jq -e --arg repo "$repo" --arg a "$a_worktree" --arg z "$z_worktree" '
     overriding_source:$z
   }]
   and any(.state.notes[]; contains("Divergent cross-worktree Task copies for T-5"))
+  and ([.state.notes[] | select(contains("Skipped disposing"))] | length == 0)
   and (
     .state.tasks[]
     | select(.id == "T-1")
@@ -298,18 +299,20 @@ jq -e --arg scratch "$scratch_root" '
 [ -f "$scratch_root/report-only-sentinel" ] \
   || fail 'inspect replaced the scratch generation'
 
-# A later apply publishes a fresh generation atomically, reaps the previous
-# one, and uses the same Repository key when invoked from a linked worktree.
+# An unchanged aggregate is not republished: the symlink keeps its
+# generation, the sentinel persists, and nothing is disposed.
 run_board 0 reconcile --repo "$a_worktree"
 assert_equal "$scratch_root" "$(jq -r '.state.scratch_root' "$tmp/result.json")" \
   'linked invocation selected a different scratch tree'
+jq -e '
+  .status == "done"
+  and any(.state.notes[]; contains("Board unchanged; kept the current generation."))
+' "$tmp/result.json" >/dev/null
 [ -L "$scratch_root" ] || fail 'apply replaced the publish symlink'
-generation_two="$(readlink "$scratch_root")"
-[ "$generation_two" != "$generation_one" ] \
-  || fail 'apply did not publish a fresh generation'
-[ ! -e "$generation_one" ] || fail 'previous generation was not reaped'
-[ ! -e "$scratch_root/report-only-sentinel" ] \
-  || fail 'wholesale rebuild retained stale cache content'
+[ "$(readlink "$scratch_root")" = "$generation_one" ] \
+  || fail 'unchanged board was republished'
+[ -f "$scratch_root/report-only-sentinel" ] \
+  || fail 'unchanged board lost its generation'
 assert_equal "$sources_before" "$(source_digest)" \
   'second materialization changed a source Task record'
 assert_equal "$primary_before" "$(primary_digest)" \
@@ -333,6 +336,12 @@ jq -e --arg repo "$repo" '
 ' "$tmp/result.json" >/dev/null
 assert_file_contains "$scratch_root/backlog/tasks/t-4 - durable-done.md" \
   'marker: primary T-4 advanced'
+generation_two="$(readlink "$scratch_root")"
+[ "$generation_two" != "$generation_one" ] \
+  || fail 'changed board kept a stale generation'
+[ ! -e "$generation_one" ] || fail 'previous generation was not disposed'
+[ "$(find "$XDG_CACHE_HOME/qq/board/.trash" -mindepth 1 -maxdepth 1 -type d | wc -l)" -ge 1 ] \
+  || fail 'disposed generation is absent from the trash'
 
 # A malformed prior publish target is canonicalized before reaping, never
 # followed outside the cache.
@@ -341,9 +350,9 @@ ln -s "$XDG_CACHE_HOME/qq/board/../../../repo" "$scratch_root"
 run_board 0 reconcile --repo "$repo"
 jq -e '
   .status == "done"
-  and any(.state.notes[]; contains("Skipped reaping a scratch target"))
+  and any(.state.notes[]; contains("Skipped disposing of a scratch target"))
 ' "$tmp/result.json" >/dev/null
-[ -d "$repo/backlog/tasks" ] || fail 'reap escaped into the fixture repo'
+[ -d "$repo/backlog/tasks" ] || fail 'disposal escaped into the fixture repo'
 [ -L "$scratch_root" ] || fail 'publish did not replace the malformed link'
 [ -d "$scratch_root/backlog/tasks" ] || fail 'malformed-link run left no board'
 
@@ -355,10 +364,10 @@ rm -f "$scratch_root"
 ln -s "$victim" "$scratch_root"
 run_board 0 reconcile --repo "$repo"
 [ -f "$victim/backlog/tasks/sentinel" ] \
-  || fail 'reap deleted a same-cache foreign target'
+  || fail 'disposal deleted a same-cache foreign target'
 jq -e '
   .status == "done"
-  and any(.state.notes[]; contains("Skipped reaping a scratch target"))
+  and any(.state.notes[]; contains("Skipped disposing of a scratch target"))
 ' "$tmp/result.json" >/dev/null
 [ -L "$scratch_root" ] && [ -d "$scratch_root/backlog/tasks" ] \
   || fail 'foreign-target run left no board'
