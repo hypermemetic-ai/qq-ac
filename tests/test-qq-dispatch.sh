@@ -133,6 +133,9 @@ git_worktree_dir="$(
 git_common_dir="$(realpath -e "$git_common_dir")"
 git_worktree_dir="$(realpath -e "$git_worktree_dir")"
 
+declare -A role_policy_snapshots=()
+declare -A role_run_dirs=()
+
 for role in reviewer researcher implementer; do
   case "$role" in
     reviewer)
@@ -191,6 +194,8 @@ PY
     || fail "$role did not receive its policy scope"
   pi_config_dir="$(sed -n 's/^PI_CODING_AGENT_DIR=//p' "$FAKE_PI_ENV")"
   role_run_dir="$(dirname -- "$pi_config_dir")"
+  role_policy_snapshots["$role"]="$policy_snapshot"
+  role_run_dirs["$role"]="$role_run_dir"
   [ ! -e "$pi_config_dir/auth.json" ] \
     || fail "$role staged an absent launcher auth file"
   grep -Fxq "TMPDIR=$role_run_dir/tmp" "$FAKE_PI_ENV" \
@@ -198,36 +203,60 @@ PY
 
   if [ "$role" = implementer ]; then
     jq -e \
-      --arg runtime "$runtime_root" \
       --arg worktree "$ROOT" \
       --arg common "$git_common_dir" \
       --arg worktree_git "$git_worktree_dir" \
+      --arg run "$role_run_dir" \
+      --arg runtime "$runtime_root" \
       --arg auth "$pi_config_dir/auth.json" \
       --arg temp "$pi_subagent_temp_prefix" '
         .enabled == true
         and .network == {
-          allowNetwork: false,
+          allowNetwork: true,
           allowLocalBinding: false,
           allowAllUnixSockets: false,
           allowUnixSockets: [],
-          allowedDomains: [],
+          allowedDomains: ["api.openai.com", "auth.openai.com", "chatgpt.com"],
           deniedDomains: []
         }
         and (.filesystem.allowWrite | sort) == (
-          [$runtime, $worktree, $common, $worktree_git, "/dev/null", $temp]
+          [$run, $worktree, $common, $worktree_git, "/dev/null", $temp]
           | unique
           | sort
         )
+        and (.filesystem.allowWrite | index($runtime)) == null
         and .filesystem.denyWrite == [$auth]
       ' "$policy_snapshot" >/dev/null
   else
-    jq -e --arg auth "$pi_config_dir/auth.json" --arg temp "$pi_subagent_temp_prefix" \
+    jq -e \
+      --arg run "$role_run_dir" \
+      --arg runtime "$runtime_root" \
+      --arg auth "$pi_config_dir/auth.json" \
+      --arg temp "$pi_subagent_temp_prefix" \
       '.enabled == true
-       and .filesystem.allowWrite == [$temp]
+       and .network == {
+         allowNetwork: true,
+         allowLocalBinding: false,
+         allowAllUnixSockets: false,
+         allowUnixSockets: [],
+         allowedDomains: ["api.openai.com", "auth.openai.com", "chatgpt.com"],
+         deniedDomains: []
+       }
+       and .filesystem.allowWrite == [$run, $temp]
+       and (.filesystem.allowWrite | index($runtime)) == null
        and .filesystem.denyWrite == [$auth]
-       and .network.allowNetwork == false' \
+      ' \
       "$policy_snapshot" >/dev/null
   fi
+done
+
+for role in reviewer researcher implementer; do
+  for sibling_role in reviewer researcher implementer; do
+    [ "$role" = "$sibling_role" ] && continue
+    jq -e --arg sibling "${role_run_dirs[$sibling_role]}" \
+      '(.filesystem.allowWrite | index($sibling)) == null' \
+      "${role_policy_snapshots[$role]}" >/dev/null
+  done
 done
 
 auth_source="$HOME/.pi/agent/auth.json"
@@ -245,14 +274,15 @@ chmod 644 "$auth_source"
     "$DISPATCH" --json
 ) >"$tmp/auth.stdout" 2>"$tmp/auth.stderr"
 auth_config_dir="$(sed -n 's/^PI_CODING_AGENT_DIR=//p' "$FAKE_PI_ENV")"
+auth_run_dir="$(dirname -- "$auth_config_dir")"
 staged_auth="$auth_config_dir/auth.json"
 [ -f "$staged_auth" ] || fail 'launcher auth was not staged'
 cmp -s -- "$auth_source" "$staged_auth" \
   || fail 'staged auth does not match the launcher auth'
 assert_equal 600 "$(stat -c '%a' "$staged_auth")" \
   'staged auth mode is not 600'
-jq -e --arg auth "$staged_auth" --arg temp "$pi_subagent_temp_prefix" '
-  .filesystem.allowWrite == [$temp]
+jq -e --arg run "$auth_run_dir" --arg auth "$staged_auth" --arg temp "$pi_subagent_temp_prefix" '
+  .filesystem.allowWrite == [$run, $temp]
   and .filesystem.denyWrite == [$auth]
 ' "$tmp/auth-policy.json" >/dev/null
 for auth_output in \
@@ -278,10 +308,14 @@ default_runtime="$default_tmp/qq-delegate-runtime"
 ) >"$tmp/default-runtime.stdout" 2>"$tmp/default-runtime.stderr"
 assert_file_contains "$tmp/default-runtime.stdout" \
   'pi-live-event role=implementer'
+default_config_dir="$(sed -n 's/^PI_CODING_AGENT_DIR=//p' "$FAKE_PI_ENV")"
+default_run_dir="$(dirname -- "$default_config_dir")"
 jq -e \
+  --arg run "$default_run_dir" \
   --arg runtime "$default_runtime" \
   --arg temp "$default_tmp/pi-subagent-*" '
-    (.filesystem.allowWrite | index($runtime) != null)
+    (.filesystem.allowWrite | index($run) != null)
+    and (.filesystem.allowWrite | index($runtime) == null)
     and (.filesystem.allowWrite | index($temp) != null)
   ' \
   "$tmp/default-runtime-policy.json" >/dev/null
@@ -328,19 +362,23 @@ mkdir -p "$fixture_runtime"
   FAKE_POLICY_SNAPSHOT="$tmp/linked-policy.json" \
     "$fixture_worktree/bin/qq-dispatch" --json
 ) >"$tmp/linked.stdout" 2>"$tmp/linked.stderr"
+linked_config_dir="$(sed -n 's/^PI_CODING_AGENT_DIR=//p' "$FAKE_PI_ENV")"
+linked_run_dir="$(dirname -- "$linked_config_dir")"
 grep -Fxq "QQ_DISPATCH_GIT_COMMON_DIR=$fixture_common_dir" "$FAKE_PI_ENV" \
   || fail 'linked adapter did not discover its common Git directory'
 grep -Fxq "QQ_DISPATCH_GIT_WORKTREE_DIR=$fixture_git_dir" "$FAKE_PI_ENV" \
   || fail 'linked adapter did not discover its per-worktree Git directory'
 jq -e \
-  --arg runtime "$fixture_runtime" \
   --arg worktree "$fixture_worktree" \
   --arg common "$fixture_common_dir" \
   --arg worktree_git "$fixture_git_dir" \
+  --arg run "$linked_run_dir" \
+  --arg runtime "$fixture_runtime" \
   --arg temp "$pi_subagent_temp_prefix" '
     .filesystem.allowWrite == [
-      $runtime, $worktree, $common, $worktree_git, "/dev/null", $temp
+      $run, $worktree, $common, $worktree_git, "/dev/null", $temp
     ]
+    and (.filesystem.allowWrite | index($runtime)) == null
   ' "$tmp/linked-policy.json" >/dev/null
 
 fixture_capture_dir="$fixture_worktree/.pi-subagents/artifacts"
@@ -357,8 +395,13 @@ mkdir -p "$fixture_capture_dir"
 ) >"$tmp/linked-capture.stdout" 2>"$tmp/linked-capture.stderr"
 assert_file_contains "$tmp/linked-capture.stdout" \
   'pi-live-event role=reviewer'
-jq -e --arg capture "$fixture_capture_path" --arg temp "$pi_subagent_temp_prefix" \
-  '.filesystem.allowWrite == [$capture, $temp]' \
+linked_capture_config_dir="$(sed -n 's/^PI_CODING_AGENT_DIR=//p' "$FAKE_PI_ENV")"
+linked_capture_run_dir="$(dirname -- "$linked_capture_config_dir")"
+jq -e \
+  --arg run "$linked_capture_run_dir" \
+  --arg capture "$fixture_capture_path" \
+  --arg temp "$pi_subagent_temp_prefix" \
+  '.filesystem.allowWrite == [$run, $capture, $temp]' \
   "$tmp/linked-capture-policy.json" >/dev/null
 
 # Exercise the production shape: the canonical adapter and its policy sources
@@ -375,6 +418,8 @@ mkdir -p "$canonical_runtime"
   FAKE_POLICY_SNAPSHOT="$tmp/canonical-policy.json" \
     "$fixture_primary/bin/qq-dispatch" --json
 ) >"$tmp/canonical.stdout" 2>"$tmp/canonical.stderr"
+canonical_config_dir="$(sed -n 's/^PI_CODING_AGENT_DIR=//p' "$FAKE_PI_ENV")"
+canonical_run_dir="$(dirname -- "$canonical_config_dir")"
 grep -Fxq "QQ_DISPATCH_WORKTREE=$fixture_worktree" "$FAKE_PI_ENV" \
   || fail 'canonical adapter did not select the child worktree'
 grep -Fxq "QQ_DISPATCH_GIT_COMMON_DIR=$fixture_common_dir" "$FAKE_PI_ENV" \
@@ -382,14 +427,16 @@ grep -Fxq "QQ_DISPATCH_GIT_COMMON_DIR=$fixture_common_dir" "$FAKE_PI_ENV" \
 grep -Fxq "QQ_DISPATCH_GIT_WORKTREE_DIR=$fixture_git_dir" "$FAKE_PI_ENV" \
   || fail 'canonical adapter did not discover the child worktree Git directory'
 jq -e \
-  --arg runtime "$canonical_runtime" \
   --arg worktree "$fixture_worktree" \
   --arg common "$fixture_common_dir" \
   --arg worktree_git "$fixture_git_dir" \
+  --arg run "$canonical_run_dir" \
+  --arg runtime "$canonical_runtime" \
   --arg temp "$pi_subagent_temp_prefix" '
     .filesystem.allowWrite == [
-      $runtime, $worktree, $common, $worktree_git, "/dev/null", $temp
+      $run, $worktree, $common, $worktree_git, "/dev/null", $temp
     ]
+    and (.filesystem.allowWrite | index($runtime)) == null
   ' "$tmp/canonical-policy.json" >/dev/null
 
 canonical_capture_path="$fixture_capture_dir/canonical-envelope.json"
@@ -404,8 +451,13 @@ canonical_capture_path="$fixture_capture_dir/canonical-envelope.json"
 ) >"$tmp/canonical-capture.stdout" 2>"$tmp/canonical-capture.stderr"
 assert_file_contains "$tmp/canonical-capture.stdout" \
   'pi-live-event role=reviewer'
-jq -e --arg capture "$canonical_capture_path" --arg temp "$pi_subagent_temp_prefix" \
-  '.filesystem.allowWrite == [$capture, $temp]' \
+canonical_capture_config_dir="$(sed -n 's/^PI_CODING_AGENT_DIR=//p' "$FAKE_PI_ENV")"
+canonical_capture_run_dir="$(dirname -- "$canonical_capture_config_dir")"
+jq -e \
+  --arg run "$canonical_capture_run_dir" \
+  --arg capture "$canonical_capture_path" \
+  --arg temp "$pi_subagent_temp_prefix" \
+  '.filesystem.allowWrite == [$run, $capture, $temp]' \
   "$tmp/canonical-capture-policy.json" >/dev/null
 
 jq -s -e '
@@ -429,17 +481,25 @@ mkdir -p "$capture_dir"
   FAKE_POLICY_SNAPSHOT="$tmp/capture-policy.json" \
     "$DISPATCH" --json
 ) >"$tmp/capture.stdout" 2>"$tmp/capture.stderr"
-jq -e --arg capture "$capture_path" --arg temp "$pi_subagent_temp_prefix" \
-  '.filesystem.allowWrite == [$capture, $temp]' \
+capture_config_dir="$(sed -n 's/^PI_CODING_AGENT_DIR=//p' "$FAKE_PI_ENV")"
+capture_run_dir="$(dirname -- "$capture_config_dir")"
+jq -e \
+  --arg run "$capture_run_dir" \
+  --arg capture "$capture_path" \
+  --arg temp "$pi_subagent_temp_prefix" \
+  '.filesystem.allowWrite == [$run, $capture, $temp]' \
   "$tmp/capture-policy.json" >/dev/null
-jq -s -e --arg capture "$capture_path" --arg temp "$pi_subagent_temp_prefix" '
+jq -s -e \
+  --arg run "$capture_run_dir" \
+  --arg capture "$capture_path" \
+  --arg temp "$pi_subagent_temp_prefix" '
   map(select(.runId == "capture-smoke")) as $events
   | ($events | length) == 1
   and $events[0].type == "qq.dispatch.adapter.launch"
   and $events[0].role == "reviewer"
   and $events[0].policyIdentity == "qq-reviewer-read-only-v1"
   and $events[0].access == "read-only"
-  and $events[0].allowWrite == [$capture, $temp]
+  and $events[0].allowWrite == [$run, $capture, $temp]
   and $events[0].structuredOutputCapture == $capture
   and $events[0].timeout == "2s"
   and $events[0].landstripVersion == "landstrip 0.17.30"

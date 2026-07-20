@@ -91,6 +91,20 @@ export PI_SUBAGENT_PI_BINARY="$HOME/projects/qq/bin/qq-dispatch"
 export PI_SUBAGENT_EXTRA_AGENT_DIRS="$HOME/projects/qq/delegation/manifests/agents"
 ```
 
+Set the dispatcher-side pi-subagents config at
+`~/.pi/agent/extensions/subagent/config.json` to include:
+
+```json
+{
+  "intercomBridge": {
+    "mode": "off"
+  }
+}
+```
+
+qq delegate visibility uses run artifacts and status, so the intercom bridge
+stays off instead of adding bridge tools to the staged child configuration.
+
 The adapter and manifests are authoritative qq configuration from primary
 `main`; do not retarget these variables to a Change worktree's copies.
 Pi-subagents inherits the one-time setup for every spawn and supplies the child

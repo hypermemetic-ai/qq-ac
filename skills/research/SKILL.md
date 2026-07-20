@@ -12,8 +12,10 @@ temporary directory. Pi-launch env (one-time; cockpit/Herdr config/shell-rc):
 `PI_SUBAGENT_PI_BINARY=<repo-primary>/bin/qq-dispatch`,
 `PI_SUBAGENT_EXTRA_AGENT_DIRS=<repo-primary>/delegation/manifests/agents`.
 
-Primary-`main` qq configuration; never Change copies. `cwd` selects
-same-Repository worktrees; require
+`~/.pi/agent/extensions/subagent/config.json`: `{"intercomBridge":{"mode":"off"}}`.
+
+Use primary-`main`; never Change copies. `cwd` selects same-Repository
+worktrees:
 `<repo-primary>/delegation/manifests/agents/researcher.md`.
 
 ```ts

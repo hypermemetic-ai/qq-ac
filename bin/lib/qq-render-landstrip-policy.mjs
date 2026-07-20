@@ -63,6 +63,8 @@ const runtimeRoot = canonicalDirectory(required(args, "--runtime-root"), "runtim
 const piAuthInput = required(args, "--pi-auth");
 if (!path.isAbsolute(piAuthInput)) fail("Pi auth path must be absolute");
 const piConfigDir = canonicalDirectory(path.dirname(piAuthInput), "Pi config directory");
+const runDir = path.dirname(piConfigDir);
+if (!pathIsStrictlyWithin(runDir, runtimeRoot)) fail("Pi run directory must stay beneath the runtime root");
 const piAuthPath = path.join(piConfigDir, path.basename(piAuthInput));
 if (!pathIsStrictlyWithin(piAuthPath, runtimeRoot)) fail("Pi auth path must stay beneath the runtime root");
 const piSubagentTempInput = required(args, "--pi-subagent-temp-prefix");
@@ -110,9 +112,9 @@ if (!definition || typeof definition !== "object") fail(`role '${role}' is not d
 if (!["read-only", "workspace-write"].includes(definition.access)) fail(`role '${role}' has an invalid access scope`);
 if (typeof definition.policyIdentity !== "string" || !definition.policyIdentity) fail(`role '${role}' has no policy identity`);
 
-const allowWrite = [];
+const allowWrite = [runDir];
 if (definition.access === "workspace-write") {
-  allowWrite.push(runtimeRoot, worktree, gitCommonDir, gitWorktreeDir, "/dev/null");
+  allowWrite.push(worktree, gitCommonDir, gitWorktreeDir, "/dev/null");
 } else if (structuredOutputCapture) {
   allowWrite.push(structuredOutputCapture);
 }
@@ -121,11 +123,11 @@ allowWrite.push(piSubagentTempPrefix);
 const policy = {
   enabled: true,
   network: {
-    allowNetwork: false,
+    allowNetwork: true,
     allowLocalBinding: false,
     allowAllUnixSockets: false,
     allowUnixSockets: [],
-    allowedDomains: [],
+    allowedDomains: ["api.openai.com", "auth.openai.com", "chatgpt.com"],
     deniedDomains: [],
   },
   filesystem: {
