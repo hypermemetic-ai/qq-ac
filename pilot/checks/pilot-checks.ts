@@ -192,7 +192,8 @@ function safeProbeWrite(filePath: string): { ok: boolean; error?: string } {
 function attemptOk(report: Record<string, unknown> | undefined, name: string): boolean | undefined {
   const value = report?.[name];
   if (!value || typeof value !== "object") return undefined;
-  return (value as { ok?: unknown }).ok === true;
+  const ok = (value as { ok?: unknown }).ok;
+  return typeof ok === "boolean" ? ok : undefined;
 }
 
 function attemptErrno(report: Record<string, unknown> | undefined, name: string): number | undefined {
@@ -242,6 +243,7 @@ function recordCheck(record: CheckRecord): void {
     `check: ${record.id}. ${record.title}`,
     `verdict: ${record.verdict}`,
     `boundary: ${record.boundary}`,
+    process.env.QQ_PILOT_SUBSTRATE_NOTE ? `substrate: ${process.env.QQ_PILOT_SUBSTRATE_NOTE}` : undefined,
     record.unresolvedRisk ? `unresolved-risk: ${record.unresolvedRisk}` : undefined,
     "observations:",
     JSON.stringify(sanitize(record.observations), null, 2),
@@ -383,15 +385,15 @@ async function checkOne(): Promise<void> {
         policy: "qq-pilot-researcher-read-only-v1",
         attempts: researcherReport,
       },
-      externalEgress: "not attempted; the work order forbids network use and the outer substrate blocks egress",
+      externalEgress: "not attempted; the work order forbids network use, so confinement of outbound egress beyond loopback is not exercised in this run",
     },
     unresolvedRisk: filesystemAssessment === "FAIL"
       ? "At least one attributable filesystem confinement requirement failed; the network result cannot reduce that failure to inconclusive."
       : filesystemAssessment === "INCONCLUSIVE-UNDER-SUBSTRATE"
-        ? "The outer substrate made at least one filesystem control read-only, so the corresponding child denial cannot be attributed to Landstrip."
+        ? "At least one filesystem parent control is unavailable, so the corresponding child denial cannot be attributed to Landstrip."
         : loopback.baselineConnected
-          ? "The attributable network case is local TCP. External egress remains unobservable beneath Codex's outer network denial."
-          : "Codex also blocked the loopback control, so the network denial could not be attributed.",
+          ? "The attributable network case is local TCP. External egress was not attempted, so confinement of outbound egress beyond loopback remains unobserved."
+          : "The loopback control was unavailable at the parent, so the child's network denial could not be attributed.",
   });
 }
 
@@ -448,41 +450,68 @@ async function checkTwo(): Promise<void> {
   fs.rmdirSync(decoyDir);
 
   const allowedNames = ["repositoryWrite", "gitCommonWrite", "gitWorktreeWrite", "runtimeWrite"];
-  const expectedAllowed = allowedNames.every((name) => attemptOk(report, name) === true);
-  const expectedDenied = attemptOk(report, "decoyWrite") === false;
   const installedVersion = installedPiPackageVersion();
   const realPiStarted = realPiSmoke.status === 0 && installedVersion === "0.80.10";
+  const reportObserved = report !== undefined;
+  const decoyWrite = attemptOk(report, "decoyWrite");
   const allowedTargetAssessment = allowedNames.map((name, index) => ({
     name,
     parentWritable: baselines[index]?.ok === true,
     parentError: baselines[index]?.error,
-    childWriteSucceeded: attemptOk(report, name) === true,
+    childWrite: attemptOk(report, name),
     childErrno: attemptErrno(report, name),
   }));
-  const attributableAllowedFailures = allowedTargetAssessment.filter(
-    (target) => target.parentWritable && !target.childWriteSucceeded,
-  );
-  const unavailableAllowedControls = allowedTargetAssessment.filter((target) => !target.parentWritable);
   const decoyControlAvailable = baselines[4]?.ok === true;
-  const verdict: Verdict = attributableAllowedFailures.length > 0 || !realPiStarted
-    ? "FAIL"
-    : unavailableAllowedControls.length > 0 || !decoyControlAvailable
-      ? "INCONCLUSIVE-UNDER-SUBSTRATE"
-      : expectedAllowed && expectedDenied
-        ? "PASS"
-        : "FAIL";
+  const definiteFailures: string[] = [
+    ...(reportObserved
+      ? []
+      : [`pilotReport: no usable child report observed (child exit ${result.exitCode})`]),
+    ...allowedTargetAssessment
+      .filter((target) => reportObserved && target.childWrite === undefined)
+      .map((target) => `${target.name}: no child write attempt observed in the child report`),
+    ...allowedTargetAssessment
+      .filter((target) => target.childWrite === false && target.parentWritable)
+      .map(
+        (target) => `${target.name}: parent control writable but child write denied (errno ${target.childErrno})`,
+      ),
+    ...(!realPiStarted
+      ? [
+          realPiSmoke.status !== 0
+            ? `realPiSmoke: exit ${realPiSmoke.status}${realPiSmoke.signal ? ` (signal ${realPiSmoke.signal})` : ""}`
+            : `realPiSmoke: installed Pi ${installedVersion} does not match pinned 0.80.10`,
+        ]
+      : []),
+    ...(decoyWrite === true ? ["decoyWrite: child wrote the decoy path outside every allowed root"] : []),
+    ...(reportObserved && decoyWrite === undefined ? ["decoyWrite: no child write attempt observed in the child report"] : []),
+  ];
+  const incompleteAttribution: string[] = [
+    ...allowedTargetAssessment
+      .filter((target) => !target.parentWritable)
+      .map((target) => `${target.name}: parent control unavailable${target.parentError ? ` (${target.parentError})` : ""}`),
+    ...(!decoyControlAvailable ? ["decoyWrite: parent baseline unavailable"] : []),
+  ];
+  const verdict: Verdict =
+    definiteFailures.length > 0
+      ? "FAIL"
+      : incompleteAttribution.length > 0
+        ? "INCONCLUSIVE-UNDER-SUBSTRATE"
+        : "PASS";
 
   recordCheck({
     id: 2,
     title: "Implementer workspace/Git write confinement",
     verdict,
     boundary:
-      "Per-target parent controls separate outer-substrate restrictions from Landstrip. In this run the assigned worktree, runtime, and decoy are parent-writable while Git administrative controls are outer-read-only. The static child still fails on attributable allowed roots, and the real-Pi smoke separately fails executable viability.",
+      "Per-target parent controls separate outer-substrate restrictions from Landstrip. Any definite failure — a missing child observation, an attributable allowed-root denial, a decoy write, or a failed real-Pi smoke — is FAIL; unavailable parent controls without a definite failure are INCONCLUSIVE; otherwise PASS.",
     observations: {
       outerBaselines: baselines,
       allowedTargetAssessment,
-      attributableAllowedFailures: attributableAllowedFailures.map((target) => target.name),
-      unavailableAllowedControls: unavailableAllowedControls.map((target) => target.name),
+      attributableAllowedFailures: allowedTargetAssessment
+        .filter((target) => target.childWrite === false && target.parentWritable)
+        .map((target) => target.name),
+      unavailableAllowedControls: allowedTargetAssessment
+        .filter((target) => !target.parentWritable)
+        .map((target) => target.name),
       decoyControlAvailable,
       staticImplementerChild: {
         exitCode: result.exitCode,
@@ -496,11 +525,15 @@ async function checkTwo(): Promise<void> {
         stderr: realPiSmoke.stderr,
         installedPiPackageVersion: installedVersion,
       },
-      diagnosis:
-        "Under the nested Codex substrate, Landstrip 0.17.30 denies its explicitly allowed worktree/runtime roots even though parent controls succeed; dynamically linked Pi also fails at libc load when allowWrite is non-empty. Git-root attribution is unavailable in this rework substrate because those parent controls return EROFS.",
+      diagnosis: {
+        definiteFailures,
+        incompleteAttribution,
+      },
     },
     unresolvedRisk:
-      "This is the migration blocker: implementer authority cannot be demonstrated under the assigned substrate, and the interaction must be reproduced outside outer Codex confinement or fixed upstream before adoption.",
+      verdict === "FAIL"
+        ? "A required pilot check recorded a definite failure; the migration verdict is HOLD whenever any required check fails or is inconclusive."
+        : undefined,
   });
 }
 
@@ -1196,7 +1229,8 @@ function writeMatrix(): void {
   const matrix = [
     "# T-94 pilot evidence matrix",
     "",
-    "Fresh local run: 2026-07-19. Package pins: pi-subagents 0.35.1, pi-landstrip/Landstrip 0.17.30, Pi 0.80.10.",
+    `Fresh local run: ${new Date().toISOString().slice(0, 10)}. Package pins: pi-subagents 0.35.1, pi-landstrip/Landstrip 0.17.30, Pi 0.80.10.`,
+    process.env.QQ_PILOT_SUBSTRATE_NOTE ? `Run substrate: ${process.env.QQ_PILOT_SUBSTRATE_NOTE}` : undefined,
     "",
     "Every raw log is normalized for machine paths, process IDs, and timestamps; runtime originals remain in the ephemeral `/tmp` run directory during execution. No Herdr stage bridge or reporting path was invoked.",
     "",
