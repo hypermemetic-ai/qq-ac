@@ -1,88 +1,70 @@
 ---
 name: delegate-batch
-description: Composes complete work orders and dispatches aligned batches of bounded tickets through isolated worktrees and stateless qq engines while the accountable session retains judgment, gates, and delivery. Use for an approved ticket batch or when the operator asks the accountable session to work the to-do list.
+description: Composes complete work orders and dispatches aligned bounded tickets through isolated worktrees and stateless qq engines while the accountable session retains judgment, gates, and delivery. Use for an approved batch or an operator request to work the to-do list.
 ---
 
 # Delegate a bounded ticket batch
 
-Use this skill only after intent and plan bounds are settled. For aligned new
-work or board-driven dispatch, the operator talks to the accountable session;
-it stays in the project home and owns batch judgment and delivery. Each writing
-ticket runs in its own work session and worktree.
+Start only after intent and plan bounds settle. For aligned or board-driven
+work, the accountable session stays in the project home and owns judgment and
+delivery; each writing ticket gets its own work session and worktree.
 
-## Compose the work order
+## Work orders and shape
 
-Write one complete work-order brief per delegated ticket under the OS temporary
-directory. It is the delegate's complete orientation and plan bound. Include:
+Write one complete brief per ticket under the OS temporary directory. Include
+the ticket and acceptance criteria, necessary batch context, exact orientation
+paths and verified facts, hard constraints, commit protocol, exact Checks, and
+required completion envelope. Writing delegates work locally, never push or
+open pull requests, and never edit `backlog/`. Keep durable intent in the Task;
+the runtime prompt is only `qq-dispatch`'s file pointer.
 
-- the ticket, acceptance criteria, and necessary batch context;
-- exact orientation paths and reconciliation facts already verified;
-- hard constraints, including local-only work, no push or pull request, and no
-  `backlog/` edits under the hybrid Task-truth convention;
-- its commit protocol and exact Checks; and
-- the required completion envelope.
+- Couple shared files or invariants and work them sequentially.
+- Fan out independent read-only work natively; give independent writers
+  disjoint branches, worktrees, work sessions, and non-Git resources.
+- Run only a dependency chain's unblocked frontier. Keep at most 3–5 writing
+  tickets in flight and serialize integration.
 
-Keep durable intent in the Task and complete orientation in the brief. The
-runtime prompt is only the fixed file pointer carried by `qq-dispatch`.
+## Dispatch and status
 
-## Select the work shape
-
-- Couple tickets that share files or one invariant; work them sequentially in
-  one isolated Change.
-- Fan out independent read-only work through native read-only workers.
-- Give independent writing tickets disjoint branches, worktrees, work
-  sessions, and non-Git resources.
-- Run only the unblocked frontier of a dependency chain.
-
-Keep 3–5 writing tickets in flight at most. Operator review and decision
-bandwidth sets the limit; serialize integration.
-
-## Dispatch through the engines
-
-From each ticket's worktree, call:
+From each ticket worktree call:
 
 ```sh
 qq-dispatch implementer \
-  --root <ticket-worktree-root> \
-  --brief <work-order-path> \
-  --output <envelope-path> \
-  --events <events-path> \
-  --stderr <stderr-path>
+  --root <worktree> --brief <brief> --output <envelope> \
+  --events <events> --stderr <stderr>
 ```
 
-Substitute only the paths; never put ticket prose on the command line. Keep all
-artifacts under the OS temporary directory. `qq-dispatch` owns the isolated
-runner, containment, role configuration, completion wake, and artifacts. Opt
-an implementer into external knowledge access only when its work order requires
-it. Use a harness-native subagent only for harness-native tools or judgment
-beyond the plan bound.
+Substitute only absolute paths under the OS temporary directory; never place
+ticket prose on the command line. The engine owns isolation, containment, role
+configuration, artifacts, and completion wake. Opt into external knowledge
+only when the brief requires it; use a harness-native subagent only for tools or
+judgment beyond the plan bound.
 
-At every dispatcher-owned boundary call `qq-status` with one of its events:
-`queued`, `dispatched`, `working`, `envelope-received`,
-`envelope-verified`, `review`, `pr-open`, `blocked`, `failed`, or `terminal`.
-Pass its required Repository, dispatcher-workspace, work-session, placeholder
-pane, agent, ticket, and label identities plus the event details. The engine
-owns atomic reporting, monotonic sequencing, notifications, cleanup, and all
-Herdr degradation; the glass never gates dispatch or delivery.
+At every dispatcher boundary call `qq-status` with `queued`, `dispatched`,
+`working`, `envelope-received`, `envelope-verified`, `review`, `pr-open`,
+`blocked`, `failed`, or `terminal`, supplying its identities and event details.
+It owns atomic stage reporting, sequencing, notifications, cleanup, and Herdr
+degradation; this glass never gates work.
 
-After dispatch, inspect each non-terminal events file once at every natural
-boundary. Publish `working` when `thread.started` supplies the steering handle.
-If it is still absent ten minutes after dispatch, publish `blocked` with
-`no thread after 10m`; do not poll. At the completion wake publish `failed` for
-exit 124 or a missing envelope, otherwise `envelope-received`. Reconstruct
-after dispatcher loss from Tasks, envelopes, and worktrees, never the glass.
+Inspect each live events file once at natural boundaries. Publish `working`
+when `thread.started` supplies its handle. If absent ten minutes after dispatch,
+publish `blocked` with `no thread after 10m`; never poll. At completion publish
+`failed` for exit 124 or a missing envelope, otherwise `envelope-received`.
+Reconstruct after dispatcher loss from Tasks, envelopes, and worktrees.
 
-## Verify the envelope and retain the gates
+## Verify and close
 
-Require the final message to report per-ticket status, commits, files changed,
-Checks with results, contestable decisions, open questions, unresolved risks,
-and the branch and worktree. Verify every claim against the tree; an envelope
-claim is not evidence. Publish `envelope-verified` only afterward.
+The envelope reports per-ticket status, commits, files, Check results,
+contestable decisions, open questions, risks, branch, and worktree. It always
+displays parallel, never-blended net production-LOC and decision-point deltas
+for every fix commit. Verify every claim against the tree before publishing
+`envelope-verified`.
 
-The accountable owner may steer rework but never hands over the lifecycle.
-Delegates do not align, review, deliver, or expand scope. A new consequential
-decision or scope gap returns to the assigner.
+Growth in either counter spends one mechanical `same fix, smaller`
+regeneration. Checks pass and strictly smaller takes it; otherwise the original
+stands without justification prose.
 
-The five gates remain: intent alignment, plan approval, review verdict,
-acceptance, and merge. Each Change still passes `code-review` and
-`deliver-change`.
+The owner may steer rework but never transfers lifecycle, alignment, review, or
+delivery. New decisions and scope gaps return to the assigner. Retain the five
+gates—intent alignment, plan approval, review verdict, acceptance, and merge—
+and route every Change through `code-review` and `deliver-change`.

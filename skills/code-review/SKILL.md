@@ -1,74 +1,60 @@
 ---
 name: code-review
-description: Delegates review of a branch, pull request, or working tree to a fresh read-only reviewer, then verifies and returns material findings. Run once for every non-trivial Change after implementation and local verification, before the first commit or publication; review each in-scope fix delta. Also use when the operator asks for review.
+description: Delegates a branch, pull request, or working tree to a fresh read-only reviewer, then verifies material findings. Run for every non-trivial Change after implementation and local verification, before its first commit or publication, and over each in-scope fix delta; also use on operator request.
 ---
 
 # Review with fresh context
 
-A review is independent judgment. The owning Actor resolves orientation once;
-the fresh reviewer derives its verdict from the Change, its intent, and the
-code around it without inheriting the author's conclusions.
+The owner resolves orientation once; a fresh reviewer derives its verdict from
+the Change and code without inheriting the author's conclusions.
 
-## Own the orientation
+## Orient and delegate
 
-1. Define the exact surface. Honor a supplied base; otherwise infer the branch
-   and merge-base. Include committed, staged, unstaged, and untracked work.
-2. Compare the actual Change with its reconciled Task or specification,
-   ownership boundary, inclusions, and non-goals. Stop and align if intent is
-   conflicting or unclear, or the Change crossed its boundary.
-3. Write a complete review brief under the OS temporary directory containing:
-   - Repository path, base, head, working-tree state, objective, and layer;
-   - a changed-path map marking mechanical, generated, and historical material;
-   - intent, acceptance criteria, inclusions, boundary, and non-goals;
-   - the threat model, defended failure modes, and declined finding classes;
-   - applicable unenforced Repository rules and standards;
-   - consulted sources and the facts each supplied, plus Check results;
-   - the reviewer's permission boundary; the required finding shape of file,
-     line, concrete failure path, and supporting evidence; and the exact
-     context-gap condition.
-
-Give coordinates and distilled facts, not source dumps. Omit the author's
-conclusions, suspected findings, and development transcript. Owned reviewer
-rules ride `REVIEW.md`; the brief supplies only Change-specific facts, and its
-declared scope wins.
-
-## Delegate the judgment
-
-4. Call one fresh reviewer:
+1. Define the exact surface. Honor a supplied base; otherwise infer branch and
+   merge-base. Include committed, staged, unstaged, and untracked work.
+2. Compare the Change with reconciled intent, inclusions, ownership boundary,
+   and non-goals. Conflicting intent or a crossed boundary returns to alignment.
+3. Write a complete temporary review brief with Repository path, base, head,
+   tree state, objective and layer; a categorized changed-path map; intent and
+   acceptance criteria; boundary and non-goals; the threat model beside its
+   declared trust boundaries, defended modes, and declined classes; unenforced
+   rules; consulted sources and facts; Check results; reviewer permissions; the
+   required file, line, failure-path, and evidence shape; and the context-gap
+   condition. Give coordinates and facts, never dumps, suspected findings,
+   author conclusions, or transcript. `REVIEW.md` supplies owned rules.
+4. Call:
 
    ```sh
    qq-dispatch reviewer \
-     --root <repository-root> \
-     --brief <brief-path> \
-     --output <report-path>
+     --root <repository-root> --brief <brief> --output <report>
    ```
 
-   Substitute only the paths. The engine owns fresh-context isolation,
-   read-only access, role configuration, containment, artifacts, and process
-   retirement. The brief states that it completes orientation: no start-of-work
-   sequence, broad intent search, or full-suite rerun.
-5. The reviewer tests the Change's responsibilities against the brief, exact
-   diff, surrounding callers and tests, and suspected failure paths. Review
-   moves and deletions through their invariants.
-6. A hole produces a context-gap report: the missing or contradictory fact,
-   why the verdict depends on it, and evidence inspected. Amend only that fact
-   and dispatch a new fresh reviewer. A context gap is neither finding nor pass.
-7. Request only material introduced failures across correctness, security,
-   reliability, intent, and unenforced standards. A smell needs concrete future
-   cost and counterevidence; never prescribe refactoring from a label.
+   Substitute only paths. The engine owns fresh read-only isolation, role
+   configuration, containment, artifacts, and retirement. State that the brief
+   completes orientation: no broad intent search or full-suite rerun.
+5. The reviewer tests responsibilities against the brief, exact diff, callers,
+   tests, and suspected failure paths. Review moves and deletions by invariant.
+   A hole reports the missing or contradictory fact, why it controls the
+   verdict, and evidence inspected. Amend only that fact and dispatch fresh; a
+   context gap is neither finding nor pass.
+6. Request only material introduced failures. Smells require evidenced future
+   cost and counterevidence, never label-driven refactoring. A finding whose
+   remedy wants a fence names the declared trust boundary; empty means shrink.
 
 ## Verify and close
 
-8. Verify every finding against the Repository. Confirm a failure with a
-   constructed input, state, or sequence observed to go wrong; confirm intent
-   findings against scope and diff. Deduplicate and rank only confirmed
-   findings. Clustered findings may expose a model problem; raise it instead of
-   feeding a patch queue. Stop at review unless fixes were requested.
-9. Fix only a Change-introduced failure reproduced in a supported state whose
-   remedy stays inside agreed intent. Rerun affected Checks and review the exact
-   fix delta. A new finding class already fixed in two prior rounds trips the
-   convergence circuit-breaker: halt at the last green state and ask which
-   layer owns the invariant.
-10. A dispatch error, nonzero exit, missing report, or context gap is not a
-    review. Rerun the unchanged or minimally completed brief fresh. Never
-    narrow scope or soften intent to obtain a pass; repeated failure blocks.
+7. Verify each finding. Confirm a failure with a constructed input, state, or
+   sequence observed to fail; confirm intent against scope and diff. Deduplicate
+   and rank confirmed findings only. Clusters may require a model decision, not
+   a patch queue. Stop at review unless fixes were requested.
+8. Fix only introduced, reproduced, supported, in-scope failures, choosing the
+   smallest resulting system; diff size only breaks ties. Display parallel net
+   production-LOC and decision-point deltas per fix commit. Growth in either
+   spends one mechanical same-fix-smaller regeneration: Checks pass and strictly
+   smaller takes it; otherwise the original stands without justification prose.
+   Rerun affected Checks and review the fix delta.
+9. A finding class fixed in two prior rounds trips the convergence breaker:
+   halt at the last green state and ask which layer owns the invariant.
+10. Dispatch error, nonzero exit, missing report, or context gap is not review.
+    Dispatch the unchanged or minimally completed brief fresh. Never narrow
+    scope or soften intent for a pass; repeated failure blocks.
