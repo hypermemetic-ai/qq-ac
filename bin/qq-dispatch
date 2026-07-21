@@ -88,7 +88,9 @@ worktree="$invocation_root"
 
 role="${PI_SUBAGENT_CHILD_AGENT:-}"
 case "$role" in
-  reviewer | researcher | implementer) ;;
+  implementer) observation_phase=implementation ;;
+  reviewer) observation_phase=review ;;
+  researcher) observation_phase=research ;;
   "") fail 66 "PI_SUBAGENT_CHILD_AGENT is required" ;;
   *) fail 66 "unsupported child role '$role'" ;;
 esac
@@ -350,13 +352,42 @@ fi
 printf '[qq-dispatch] role=%s policy=%s scope=%s boundary=landstrip landstrip=%s timeout=%s\n' \
   "$role" "$policy_identity" "$access_scope" "$landstrip_version" "$timeout_spec" >&2
 
+dispatch_pid=""
+termination_signal=""
+# shellcheck disable=SC2317  # Invoked asynchronously by the traps below.
+forward_termination() {
+  termination_signal="$1"
+  if [[ -n "$dispatch_pid" ]]; then
+    kill -s "$1" "$dispatch_pid" 2>/dev/null || true
+  fi
+}
+trap 'forward_termination TERM' TERM
+trap 'forward_termination INT' INT
+trap 'forward_termination HUP' HUP
+
 set +e
 "$timeout_binary" -k 10 --signal=TERM "$timeout_spec" \
   "$python_binary" "$tree_supervisor" -- \
   "$landstrip_binary" -p "$policy_path" \
-  "$pi_binary" --approve --offline --extension "$fast_extension" "$@"
-child_status=$?
+  "$pi_binary" --approve --offline --extension "$fast_extension" "$@" &
+dispatch_pid=$!
+while true; do
+  wait "$dispatch_pid"
+  child_status=$?
+  if [[ -n "$termination_signal" ]] && kill -0 "$dispatch_pid" 2>/dev/null; then
+    continue
+  fi
+  break
+done
 set -e
+trap - TERM INT HUP
+if [[ -n "$termination_signal" ]]; then
+  case "$termination_signal" in
+    HUP) child_status=129 ;;
+    INT) child_status=130 ;;
+    TERM) child_status=143 ;;
+  esac
+fi
 
 if $observation_enabled; then
   span_end="$(date --iso-8601=ns)"
@@ -368,7 +399,7 @@ if $observation_enabled; then
   fi
   if ! "$observe" record \
     --name invoke_agent \
-    --phase implementation \
+    --phase "$observation_phase" \
     --actor "$role" \
     --start "$span_start" \
     --end "$span_end" \

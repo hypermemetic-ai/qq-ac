@@ -56,18 +56,31 @@ git_binary="$QQ_BIN_RESULT"
 repo_root="$($git_binary rev-parse --show-toplevel 2>/dev/null)" \
   || { printf 'qq-observe: current directory is not in a Git worktree\n' >&2; exit 65; }
 repo_root="$(realpath -e -- "$repo_root")"
-repo_name="$(basename -- "$repo_root")"
+git_common_dir="$($git_binary rev-parse --path-format=absolute --git-common-dir 2>/dev/null)" \
+  || { printf 'qq-observe: cannot discover the Git common directory\n' >&2; exit 65; }
+git_common_dir="$(realpath -e -- "$git_common_dir")"
+repo_name="$(basename -- "$(dirname -- "$git_common_dir")")"
 [[ "$repo_name" =~ ^[A-Za-z0-9._-]+$ ]] \
   || { printf 'qq-observe: unsafe Repository name: %s\n' "$repo_name" >&2; exit 65; }
 state_home="${XDG_STATE_HOME:-${HOME:?HOME is required when XDG_STATE_HOME is unset}/.local/state}"
 [[ "$state_home" == /* ]] \
   || { printf 'qq-observe: state home must be absolute\n' >&2; exit 65; }
-store_dir="$state_home/qq/spans/$repo_name"
-store_candidate="$($python_binary - "$store_dir" <<'PY'
+store_paths="$("$python_binary" - "$state_home" "$repo_name" <<'PY'
 import os, sys
-print(os.path.realpath(sys.argv[1]))
+state_root = os.path.realpath(sys.argv[1])
+store = os.path.realpath(os.path.join(sys.argv[1], "qq", "spans", sys.argv[2]))
+print(state_root)
+print(store)
 PY
 )"
+state_root="${store_paths%%$'\n'*}"
+store_candidate="${store_paths#*$'\n'}"
+path_is_within() {
+  local candidate="$1" root="$2"
+  [[ "$candidate" == "$root" || "$candidate" == "$root"/* ]]
+}
+path_is_within "$store_candidate" "$state_root" \
+  || { printf 'qq-observe: span store escapes the resolved state root: %s\n' "$store_candidate" >&2; exit 65; }
 existing="$store_candidate"
 while [[ ! -e "$existing" ]]; do
   parent="$(dirname -- "$existing")"
@@ -76,13 +89,15 @@ while [[ ! -e "$existing" ]]; do
 done
 if containing_root="$($git_binary -C "$existing" rev-parse --show-toplevel 2>/dev/null)"; then
   containing_root="$(realpath -e -- "$containing_root")"
-  if [[ "$store_candidate" == "$containing_root" || "$store_candidate" == "$containing_root"/* ]]; then
+  if path_is_within "$store_candidate" "$containing_root"; then
     printf 'qq-observe: refusing span store inside Git worktree: %s\n' "$store_candidate" >&2
     exit 65
   fi
 fi
 mkdir -p -- "$store_candidate"
 store_dir="$(realpath -e -- "$store_candidate")"
+path_is_within "$store_dir" "$state_root" \
+  || { printf 'qq-observe: span store escapes the resolved state root: %s\n' "$store_dir" >&2; exit 65; }
 store_file="$store_dir/spans.jsonl"
 
 exec "$python_binary" - "$command" "$store_file" "$@" <<'PY'
@@ -91,13 +106,14 @@ import json
 import os
 from pathlib import Path
 import re
+import stat
 import sys
 import uuid
 
 command, store_file, *args = sys.argv[1:]
 HEX16 = re.compile(r"^[0-9a-f]{16}$")
 HEX32 = re.compile(r"^[0-9a-f]{32}$")
-PHASES = {"orientation", "alignment", "implementation", "review", "delivery"}
+PHASES = {"orientation", "alignment", "implementation", "review", "research", "delivery"}
 
 def fail(message):
     print(f"qq-observe: {message}", file=sys.stderr)
@@ -149,9 +165,24 @@ def context(options):
     return trace_id, span_id, parent, root
 
 def append(record):
-    line = json.dumps(record, separators=(",", ":"), sort_keys=True)
-    fd = os.open(store_file, os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o600)
     try:
+        existing = os.lstat(store_file)
+    except FileNotFoundError:
+        existing = None
+    except OSError as error:
+        fail(f"cannot inspect span store leaf: {error}")
+    if existing is not None and not stat.S_ISREG(existing.st_mode):
+        fail("span store leaf is not a regular file")
+    line = json.dumps(record, separators=(",", ":"), sort_keys=True)
+    flags = os.O_WRONLY | os.O_CREAT | os.O_APPEND
+    flags |= getattr(os, "O_NOFOLLOW", 0)
+    try:
+        fd = os.open(store_file, flags, 0o600)
+    except OSError as error:
+        fail(f"cannot open span store leaf: {error}")
+    try:
+        if not stat.S_ISREG(os.fstat(fd).st_mode):
+            fail("span store leaf is not a regular file")
         os.write(fd, (line + "\n").encode())
     finally:
         os.close(fd)
@@ -190,11 +221,16 @@ else:
     if not path.is_file(): fail(f"session JSONL is not a regular file: {path}")
     observed = []
     entries = 0
+    header_seen = False
     try:
         with path.open(encoding="utf-8") as source:
             for number, line in enumerate(source, 1):
                 if not line.strip(): continue
                 item = json.loads(line)
+                if not header_seen:
+                    if not isinstance(item, dict) or item.get("type") != "session" or item.get("version") != 3:
+                        fail("session JSONL must begin with a type=session, version=3 header")
+                    header_seen = True
                 if not isinstance(item, dict) or not isinstance(item.get("timestamp"), str):
                     fail(f"session entry {number} lacks a timestamp")
                 observed.append(timestamp(item["timestamp"]))
