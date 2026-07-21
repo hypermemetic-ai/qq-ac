@@ -32,7 +32,7 @@ disposition before explicit approval.
 
 On explicit approval, capture the plan as a Backlog `plans` document
 through Backlog's CLI, attached to the owning Task (`--doc` replaces the
-list); the loop's `.pi/plans/` scratch is never captured.
+list); `.pi/plans/` scratch is never captured.
 
 For a settled decision reaching beyond one Change, mint its Backlog decision
 record in the Change checkout first encoding it, riding that pull request—never

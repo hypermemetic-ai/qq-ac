@@ -19,7 +19,7 @@ qq engines unconditionally: they own containment, degradation, and rails.
    checkout or create a work session from the agreed base. The Task record
    lives here: new work is born through Backlog's CLI; legacy tracked
    records are edited on this branch, never primary `main`. Capture the
-   approved plan here per `grilling`, its doc id cited in the ledger.
+   approved plan per `grilling`, its doc id cited in the ledger.
    Retain workspace and pane IDs. Dispatch from project home; work in
    checkout. Cockpit attachment never blocks.
 3. Implement through one complete work order and `delegate-batch`; verify the
