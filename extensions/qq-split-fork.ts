@@ -25,9 +25,11 @@ function getPiInvocationParts() {
 }
 
 function buildPiStartupInput(sessionFile, prompt) {
+  // The prompt travels as one positional argument: pi's argument parser
+  // rejects a `--` sentinel ("Error: Unknown option: --").
   const commandParts = [...getPiInvocationParts(), "--session", sessionFile];
   if (prompt.length > 0) {
-    commandParts.push("--", prompt);
+    commandParts.push(prompt);
   }
   return `${commandParts.map(shellQuote).join(" ")}\n`;
 }
@@ -203,13 +205,22 @@ export default function register(pi, deps = {}) {
       }
 
       if (process.env.TMUX !== undefined) {
-        await run("tmux", [
+        const tmuxResult = await run("tmux", [
           "split-window",
           "-h",
           "-c",
           ctx.cwd,
           manualCommand,
         ]);
+        if (tmuxResult?.code !== 0) {
+          notifyManualLaunch(
+            ctx,
+            executionReason(tmuxResult, "unknown tmux split error"),
+            forkedSessionFile,
+            manualCommand,
+          );
+          return;
+        }
         ctx.ui.notify(
           `Forked to ${path.basename(forkedSessionFile)} in a right-hand tmux split.`,
           "info",

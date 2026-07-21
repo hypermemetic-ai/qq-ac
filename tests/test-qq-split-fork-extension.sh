@@ -148,6 +148,11 @@ async function testHerdrLaunch() {
   assert.deepEqual(h.execCalls[1].args.slice(0, 3), ["pane", "send-text", "wM:p4A"]);
   assert.match(h.execCalls[1].args[3], /--session/);
   assert.match(h.execCalls[1].args[3], /continue the fork/);
+  assert.equal(
+    h.execCalls[1].args[3].includes(" -- "),
+    false,
+    "startup input carried the unsupported `--` sentinel",
+  );
   assert.equal(h.execCalls[1].args[3].endsWith("\n"), true, "herdr startup input lacked newline");
   assert.deepEqual(h.execCalls[2], {
     executable: "herdr",
@@ -174,6 +179,27 @@ async function testTmuxLaunch() {
   assert.match(h.execCalls[0].args[4], /--session/);
   assert.equal(h.execCalls[0].args[4].endsWith("\n"), false, "tmux command retained startup newline");
   assert.ok(h.notifications.some(({ level }) => level === "info"));
+}
+
+async function testTmuxLaunchFailure() {
+  setLaunchEnvironment(undefined, "/tmp/tmux-socket");
+  const h = createHarness("tmux-failure", {
+    execReply: () => ({ code: 1, stdout: "", stderr: "can't create pane" }),
+  });
+  await h.command.handler("", h.ctx);
+
+  assert.equal(h.execCalls.length, 1);
+  assert.equal(h.execCalls[0].executable, "tmux");
+  assert.ok(
+    h.notifications.some(({ message, level }) =>
+      level === "error" && message.includes("can't create pane") && message.includes("--session")
+    ),
+    "tmux failure did not surface the error and the manual command",
+  );
+  assert.ok(
+    !h.notifications.some(({ level }) => level === "info"),
+    "tmux failure falsely notified success",
+  );
 }
 
 async function testManualFallback() {
@@ -209,6 +235,7 @@ async function testMissingSession() {
 
 await testHerdrLaunch();
 await testTmuxLaunch();
+await testTmuxLaunchFailure();
 await testManualFallback();
 await testMissingSession();
 setLaunchEnvironment(undefined, undefined);
