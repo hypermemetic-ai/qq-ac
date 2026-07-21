@@ -1,10 +1,10 @@
 ---
 id: T-129
 title: Stop creating work sessions — session-absent as the default Change posture
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-07-21 05:55'
-updated_date: '2026-07-21 06:47'
+updated_date: '2026-07-21 06:52'
 labels: []
 dependencies: []
 documentation:
@@ -45,3 +45,9 @@ This Change is itself born session-absent: no work session was created for it; i
 <!-- SECTION:NOTES:BEGIN -->
 DEVIATION (one-time, operator-approved 2026-07-21, unblock-route card 'Waive envelope once'): the fresh-context code review for this Change is dispatched WITHOUT outputSchema — adapter confinement intact, strict completion envelope waived for this review only. Cause: pi-subagents places the structured-output capture file under /tmp/pi-subagents-uid-<uid>/... while qq-dispatch's runtime root defaults to /tmp/qq-delegate-runtime; the fail-closed guard (bin/qq-dispatch:128-151) correctly refuses the mismatch (reviewer runs bd7ae303, 6d128bec died at start). Diagnosis: researcher run 622ddb35 (cited findings: guard correct, topology mismatch; implementer 13b192b0 had bypassed the adapter entirely because PI_SUBAGENT_PI_BINARY was not yet active in this session). Durable fix owned by t-128 (QQ_DISPATCH_RUNTIME_ROOT carried in the sourced shell/extension surface). Not a precedent: strict envelopes resume for all dispatches once the runtime-root env is carried.
 <!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Delivered session-absent as the default Change posture. AC#1: only two intentional 'work session' pointers remain (deliver-change step 11 default-absence + legacy-retirement note). AC#2: step 2 births a plain linked worktree; step 11's canonical retire is --checkout --workspace-absent-owned, probed live (exit-2 rail refusal on unclean checkout, path resolves). AC#3: bin/ byte-identical (verified empty diff). AC#4: native suite 16/16 + ratchet 7516 exact; reviewer independently re-verified all three pins. AC#5: decision-9 minted in this checkout. Fresh-context review: Approve, no findings (dispatched under a one-time, operator-approved envelope waiver recorded above; adapter confinement intact). This Change was itself born session-absent and retires via --workspace-absent-owned. Plan doc-74, decision-9, and t-130 (plan-loop UX finding) ride the same PR.
+<!-- SECTION:FINAL_SUMMARY:END -->
