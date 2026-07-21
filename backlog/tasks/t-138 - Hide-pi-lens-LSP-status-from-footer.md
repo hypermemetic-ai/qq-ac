@@ -1,10 +1,10 @@
 ---
 id: T-138
 title: Hide pi-lens LSP status from footer
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-07-21 19:17'
-updated_date: '2026-07-21 19:18'
+updated_date: '2026-07-21 19:26'
 labels: []
 dependencies: []
 ordinal: 61000
@@ -20,7 +20,13 @@ Decision ledger: operator verbatim instruction (2026-07-21) — 'lsp failed: typ
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 footer status row no longer renders the pi-lens-lsp status (verified headless with mock statuses)
-- [ ] #2 other statuses (e.g. github-pr) still render; empty row collapses so footer renders only its config line
+- [x] #1 footer status row no longer renders the pi-lens-lsp status (verified headless with mock statuses)
+- [x] #2 other statuses (e.g. github-pr) still render; empty row collapses so footer renders only its config line
 - [ ] #3 Change lands as one PR; operator merges
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Added 'pi-lens-lsp' to extensionStatusRow.hiddenKeys/knownKeys in extensions/pi-footer.json (t-133 pattern). Headless verification through pi-footer's real loader/filter with mock statuses, 6/6 PASS: pi-lens-lsp filtered in idle/failed/active states (the operator's 'LSP Failed: typescript' text no longer renders), github-pr and plan-loop still render, hunk/merge-ready stay hidden, empty visible set collapses the row so the footer renders only its config line. Underlying typescript LSP failure fixed as local machine state: pi-lens managed tools had auto-installed typescript@7.0.2 (no lib/tsserver.js); pinned typescript@^5.9.3 in ~/.pi-lens/tools, initialize handshake verified. PR #195 opened, shell-tests green; operator merges.
+<!-- SECTION:NOTES:END -->
