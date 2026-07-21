@@ -124,7 +124,8 @@ if (typeof definition.policyIdentity !== "string" || !definition.policyIdentity)
 const allowWrite = [runDir];
 if (definition.access === "workspace-write") {
   allowWrite.push(worktree, gitCommonDir, gitWorktreeDir);
-} else if (structuredOutputCapture) {
+}
+if (structuredOutputCapture) {
   allowWrite.push(structuredOutputCapture);
 }
 allowWrite.push("/dev/null", ...piSubagentTempDirs);
