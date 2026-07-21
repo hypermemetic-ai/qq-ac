@@ -638,6 +638,22 @@ jq -s -e \
   and $events[0].landstripVersion == "landstrip 0.17.31"
 ' "$runtime_root/wrapper-events.jsonl" >/dev/null
 
+implementer_capture_path="$capture_dir/implementer-envelope.json"
+(
+  cd "$ROOT"
+  PI_SUBAGENT_CHILD_AGENT=implementer \
+  PI_SUBAGENT_RUN_ID=implementer-capture-smoke \
+  PI_SUBAGENT_STRUCTURED_OUTPUT_CAPTURE="$implementer_capture_path" \
+  FAKE_POLICY_SNAPSHOT="$tmp/implementer-capture-policy.json" \
+    "$DISPATCH" --json
+) >"$tmp/implementer-capture.stdout" 2>"$tmp/implementer-capture.stderr"
+assert_file_contains "$tmp/implementer-capture.stdout" \
+  'pi-live-event role=implementer'
+jq -e \
+  --arg capture "$implementer_capture_path" \
+  '(.filesystem.allowWrite | index($capture)) != null' \
+  "$tmp/implementer-capture-policy.json" >/dev/null
+
 run_failure() {
   local label="$1"
   local cwd="$2"
