@@ -176,4 +176,37 @@ assert_write_denied \
 assert_write_denied \
   "$implementer_policy" "$later_subagent_tmp/implementer-created" later-subagent-run
 
+# T-124: scratch space reaches confined children through the adapter's
+# run-local TMPDIR, never through a /tmp glob, and no role policy may deny
+# the runtime root (a recursive root deny kills the per-run grants inside
+# it — observed live as broken child auth staging).
+assert_policy_omits "$reviewer_policy" /tmp
+assert_policy_omits "$implementer_policy" /tmp
+"$node_binary" -e '
+  const fs = require("node:fs");
+  const [policyPath, runtimeRoot] = process.argv.slice(1);
+  const policy = JSON.parse(fs.readFileSync(policyPath, "utf8"));
+  if (policy.filesystem.denyWrite.includes(runtimeRoot)) process.exit(1);
+' "$implementer_policy" "$runtime_root" \
+  || fail 'implementer policy denies the runtime root'
+"$node_binary" -e '
+  const fs = require("node:fs");
+  const [policyPath, runtimeRoot] = process.argv.slice(1);
+  const policy = JSON.parse(fs.readFileSync(policyPath, "utf8"));
+  if (policy.filesystem.denyWrite.includes(runtimeRoot)) process.exit(1);
+' "$reviewer_policy" "$runtime_root" \
+  || fail 'reviewer policy denies the runtime root'
+
+mkdir -p -- "$implementer_run/tmp"
+scratch_output="$tmp/scoped-scratch.output"
+set +e
+TMPDIR="$implementer_run/tmp" "$landstrip_binary" -p "$implementer_policy" \
+  bash -c 'd="$(mktemp -d)" && git init -q "$d"' >"$scratch_output" 2>&1
+scratch_status=$?
+set -e
+[[ "$scratch_status" -eq 0 ]] || {
+  sed -n '1,80p' "$scratch_output" >&2
+  fail 'confined scratch repo creation under run-local TMPDIR failed'
+}
+
 printf 'test-qq-delegate-enforcement: pass\n'
