@@ -1,9 +1,10 @@
 ---
 id: T-132
 title: Ignore local runtime state dirtying primary checkout
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-07-21 06:24'
+updated_date: '2026-07-21 06:25'
 labels: []
 dependencies: []
 ordinal: 57000
@@ -22,3 +23,9 @@ Decision ledger: operator verbatim instruction — 'gitignore the config file. i
 - [ ] #1 git status in primary main checkout is completely clean with all local content preserved on disk
 - [ ] #2 Change lands as one PR; operator merges; qq-change land 181 subsequently succeeds
 <!-- AC:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Untracked cockpit/herdr/config.toml (kanagawa theme preserved on disk), added gitignore entries for /cockpit/herdr/config.toml, /.pi/, /skills/.system/ per operator instruction. PR #182 opened; once merged, primary main checkout is clean and qq-change land 181 can proceed.
+<!-- SECTION:FINAL_SUMMARY:END -->
