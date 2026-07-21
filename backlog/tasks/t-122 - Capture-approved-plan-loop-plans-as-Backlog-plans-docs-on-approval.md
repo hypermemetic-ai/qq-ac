@@ -1,10 +1,10 @@
 ---
 id: T-122
 title: Capture approved plan-loop plans as Backlog plans docs on approval
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-07-20 20:37'
-updated_date: '2026-07-20 21:21'
+updated_date: '2026-07-21 02:07'
 labels: []
 dependencies:
   - T-88
@@ -49,3 +49,9 @@ Enactment notes (2026-07-20, recorded at ticketing):
 
 Park state (2026-07-20, review round 1): branch feat/t-122-plan-capture at cea1774, worktree /home/qqp/.herdr/worktrees/qq/feat-t-122-plan-capture, work session w71 (root placeholder pane w71:p1). Verified green pre-park: ratchet 7578 exact, 16/16 tests. Fresh-context review R1 = request-changes (P1 capture-sequencing, confirmed; CLI probe: 'backlog task view t-122' lowercase resolves in primary, record absent from worktree). Resume protocol once T-88 merges: rebase onto new main, confirm step-2 capture is consistent with T-88's enacted text (step-6 transfer deleted), rerun full suite + ratchet, re-review the delta if conflicted, then handoff.
 <!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Capture rule landed (PR #172): grilling captures the approved plan as a Backlog plans doc via CLI attached to the owning Task (--doc replaces; scratch never captured); deliver-change step 2 names the step with the doc id cited in the ledger, executable now that the Task record is born in the Change checkout (T-88). Evidence: ratchet 7563 exact, 17/17 suite, guard test PASS. Review: R1 sequencing conflict resolved by T-88 sequencing; R2/R3 PASS.
+<!-- SECTION:FINAL_SUMMARY:END -->
