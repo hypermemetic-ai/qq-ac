@@ -40,7 +40,7 @@ worktrees.
 
 ```ts
 const completionEnvelopeSchema=JSON.parse(readFileSync("<absolute-worktree>/delegation/manifests/completion-envelope.schema.json","utf8"))
-subagent({chain:[{agent:"implementer",task:"Read-and-perform:<absolute-brief-path>",outputSchema:completionEnvelopeSchema,acceptance:{level:"none",reason:"qq acceptance is the strict envelope plus owner tree verification plus fresh review"}}],cwd:"<absolute-worktree>",context:"fresh",async:true,timeoutMs:1800000})
+subagent({chain:[{agent:"implementer",task:"Read-and-perform:<absolute-brief-path>",outputSchema:completionEnvelopeSchema,acceptance:{level:"none",reason:"per the manifests"}}],cwd:"<absolute-worktree>",context:"fresh",async:true,timeoutMs:1800000})
 ```
 
 Use only absolute paths: the task points to the work order, `cwd` to its
@@ -56,9 +56,9 @@ ten minutes means block with `no thread after 10m`. A terminal nonzero result
 or missing/invalid structured output fails dispatch. Reconstruct after
 dispatcher loss from Tasks, native artifacts, transcripts, worktrees.
 
-A child's confined suite run is best-effort: Landlock cannot pass `/dev/fd`
-process substitution; report such failures as `inconclusive-under-substrate`.
-The owner's native suite rerun plus CI is the binding green.
+Confined child suite runs are best-effort: Landlock cannot pass
+`/dev/fd` process substitution; report those as `inconclusive-under-substrate`.
+The owner's native rerun plus CI is binding green.
 
 ## Verify and close
 
