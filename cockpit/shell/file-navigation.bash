@@ -15,6 +15,9 @@ function qq_mount_bin() {
 qq_mount_bin
 unset -f qq_mount_bin
 export PATH
+# Confined delegation adapter env is provided by the project-local pi
+# extension .pi/extensions/qq-subagent-env.ts (README, Install), which sets
+# the PI_SUBAGENT_* variables in-process for pi sessions in this checkout.
 function qqroot() {
     if [ -d "$QQ_HOME" ]; then
         builtin cd -- "$QQ_HOME"

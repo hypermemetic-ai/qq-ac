@@ -16,9 +16,16 @@ trap 'rm -rf "$tmp"' EXIT
 test_home="$tmp/home"
 parent_tmp="$tmp/parent-tmp"
 pi_subagent_own_temp="$parent_tmp/pi-subagent-THIS"
+pi_subagent_sess="$parent_tmp/pi-subagent-sessions"
 mkdir -p "$test_home" "$pi_subagent_own_temp"
 export HOME="$test_home"
 export TMPDIR="$parent_tmp"
+
+# The adapter requires the dispatcher-side pi-subagents config to name the
+# session root (README Install); stage it for every dispatch in this suite.
+mkdir -p "$test_home/.pi/agent/extensions/subagent"
+printf '{"defaultSessionDir": "%s"}\n' "$parent_tmp/pi-subagent-sessions" \
+  > "$test_home/.pi/agent/extensions/subagent/config.json"
 
 for expected in \
   "$DISPATCH" \
@@ -236,7 +243,7 @@ PY
       --arg run "$role_run_dir" \
       --arg runtime "$runtime_root" \
       --arg auth "$pi_config_dir/auth.json" \
-      --arg temp "$pi_subagent_own_temp" '
+      --arg temp "$pi_subagent_own_temp" --arg sess "$pi_subagent_sess" '
         .enabled == true
         and .network == {
           allowNetwork: true,
@@ -247,7 +254,7 @@ PY
         and (.network | has("allowedDomains") | not)
         and (.network | has("deniedDomains") | not)
         and (.filesystem.allowWrite | sort) == (
-          [$run, $worktree, $common, $worktree_git, "/dev/null", $temp]
+          [$run, $worktree, $common, $worktree_git, "/dev/null", $temp, $sess]
           | unique
           | sort
         )
@@ -259,7 +266,7 @@ PY
       --arg run "$role_run_dir" \
       --arg runtime "$runtime_root" \
       --arg auth "$pi_config_dir/auth.json" \
-      --arg temp "$pi_subagent_own_temp" \
+      --arg temp "$pi_subagent_own_temp" --arg sess "$pi_subagent_sess" \
       '.enabled == true
        and .network == {
          allowNetwork: true,
@@ -269,7 +276,7 @@ PY
        }
        and (.network | has("allowedDomains") | not)
        and (.network | has("deniedDomains") | not)
-       and .filesystem.allowWrite == [$run, "/dev/null", $temp]
+       and .filesystem.allowWrite == [$run, "/dev/null", $temp, $sess]
        and (.filesystem.allowWrite | index($runtime)) == null
        and .filesystem.denyWrite == [$auth]
       ' \
@@ -321,8 +328,8 @@ cmp -s -- "$auth_source" "$staged_auth" \
   || fail 'staged auth does not match the launcher auth'
 assert_equal 600 "$(stat -c '%a' "$staged_auth")" \
   'staged auth mode is not 600'
-jq -e --arg run "$auth_run_dir" --arg auth "$staged_auth" --arg temp "$pi_subagent_own_temp" '
-  .filesystem.allowWrite == [$run, "/dev/null", $temp]
+jq -e --arg run "$auth_run_dir" --arg auth "$staged_auth" --arg temp "$pi_subagent_own_temp" --arg sess "$pi_subagent_sess" '
+  .filesystem.allowWrite == [$run, "/dev/null", $temp, $sess]
   and .filesystem.denyWrite == [$auth]
 ' "$tmp/auth-policy.json" >/dev/null
 for auth_output in \
@@ -337,9 +344,14 @@ rm "$auth_source"
 
 default_tmp="$tmp/default-tmp"
 default_runtime="$default_tmp/qq-delegate-runtime"
+default_home="$tmp/default-home"
+mkdir -p "$default_home/.pi/agent/extensions/subagent"
+printf '{"defaultSessionDir": "%s"}\n' "$default_tmp/pi-subagent-sessions" \
+  > "$default_home/.pi/agent/extensions/subagent/config.json"
 (
   cd "$ROOT"
   env -u QQ_DISPATCH_RUNTIME_ROOT \
+    HOME="$default_home" \
     TMPDIR="$default_tmp" \
     PI_SUBAGENT_CHILD_AGENT=implementer \
     PI_SUBAGENT_RUN_ID=default-runtime-smoke \
@@ -353,11 +365,12 @@ default_run_dir="$(dirname -- "$default_config_dir")"
 jq -e \
   --arg run "$default_run_dir" \
   --arg runtime "$default_runtime" \
-  --arg temp_prefix "$default_tmp/pi-subagent-" '
+  --arg temp_prefix "$default_tmp/pi-subagent-" \
+  --arg sess "$default_tmp/pi-subagent-sessions" '
     (.filesystem.allowWrite | index($run) != null)
     and (.filesystem.allowWrite | index($runtime) == null)
     and (.filesystem.allowWrite | index("/dev/null") != null)
-    and all(.filesystem.allowWrite[]; startswith($temp_prefix) | not)
+    and (.filesystem.allowWrite | map(select(startswith($temp_prefix))) == [$sess])
   ' \
   "$tmp/default-runtime-policy.json" >/dev/null
 
@@ -432,9 +445,9 @@ jq -e \
   --arg worktree_git "$fixture_git_dir" \
   --arg run "$linked_run_dir" \
   --arg runtime "$fixture_runtime" \
-  --arg temp "$pi_subagent_own_temp" '
+  --arg temp "$pi_subagent_own_temp" --arg sess "$pi_subagent_sess" '
     .filesystem.allowWrite == [
-      $run, $worktree, $common, $worktree_git, "/dev/null", $temp
+      $run, $worktree, $common, $worktree_git, "/dev/null", $temp, $sess
     ]
     and (.filesystem.allowWrite | index($runtime)) == null
   ' "$tmp/linked-policy.json" >/dev/null
@@ -458,8 +471,8 @@ linked_capture_run_dir="$(dirname -- "$linked_capture_config_dir")"
 jq -e \
   --arg run "$linked_capture_run_dir" \
   --arg capture "$fixture_capture_path" \
-  --arg temp "$pi_subagent_own_temp" \
-  '.filesystem.allowWrite == [$run, $capture, "/dev/null", $temp]' \
+  --arg temp "$pi_subagent_own_temp" --arg sess "$pi_subagent_sess" \
+  '.filesystem.allowWrite == [$run, $capture, "/dev/null", $temp, $sess]' \
   "$tmp/linked-capture-policy.json" >/dev/null
 
 # Exercise the production shape: the canonical adapter and its policy sources
@@ -490,9 +503,9 @@ jq -e \
   --arg worktree_git "$fixture_git_dir" \
   --arg run "$canonical_run_dir" \
   --arg runtime "$canonical_runtime" \
-  --arg temp "$pi_subagent_own_temp" '
+  --arg temp "$pi_subagent_own_temp" --arg sess "$pi_subagent_sess" '
     .filesystem.allowWrite == [
-      $run, $worktree, $common, $worktree_git, "/dev/null", $temp
+      $run, $worktree, $common, $worktree_git, "/dev/null", $temp, $sess
     ]
     and (.filesystem.allowWrite | index($runtime)) == null
   ' "$tmp/canonical-policy.json" >/dev/null
@@ -514,8 +527,8 @@ canonical_capture_run_dir="$(dirname -- "$canonical_capture_config_dir")"
 jq -e \
   --arg run "$canonical_capture_run_dir" \
   --arg capture "$canonical_capture_path" \
-  --arg temp "$pi_subagent_own_temp" \
-  '.filesystem.allowWrite == [$run, $capture, "/dev/null", $temp]' \
+  --arg temp "$pi_subagent_own_temp" --arg sess "$pi_subagent_sess" \
+  '.filesystem.allowWrite == [$run, $capture, "/dev/null", $temp, $sess]' \
   "$tmp/canonical-capture-policy.json" >/dev/null
 
 jq -s -e '
@@ -550,20 +563,20 @@ capture_run_dir="$(dirname -- "$capture_config_dir")"
 jq -e \
   --arg run "$capture_run_dir" \
   --arg capture "$capture_path" \
-  --arg temp "$pi_subagent_own_temp" \
-  '.filesystem.allowWrite == [$run, $capture, "/dev/null", $temp]' \
+  --arg temp "$pi_subagent_own_temp" --arg sess "$pi_subagent_sess" \
+  '.filesystem.allowWrite == [$run, $capture, "/dev/null", $temp, $sess]' \
   "$tmp/capture-policy.json" >/dev/null
 jq -s -e \
   --arg run "$capture_run_dir" \
   --arg capture "$capture_path" \
-  --arg temp "$pi_subagent_own_temp" '
+  --arg temp "$pi_subagent_own_temp" --arg sess "$pi_subagent_sess" '
   map(select(.runId == "capture-smoke")) as $events
   | ($events | length) == 1
   and $events[0].type == "qq.dispatch.adapter.launch"
   and $events[0].role == "reviewer"
   and $events[0].policyIdentity == "qq-reviewer-read-only-v1"
   and $events[0].access == "read-only"
-  and $events[0].allowWrite == [$run, $capture, "/dev/null", $temp]
+  and $events[0].allowWrite == [$run, $capture, "/dev/null", $temp, $sess]
   and $events[0].structuredOutputCapture == $capture
   and $events[0].timeout == "2s"
   and $events[0].landstripVersion == "landstrip 0.17.31"
@@ -777,5 +790,50 @@ done
 if kill -0 "$child_pid" 2>/dev/null; then
   fail "process-tree supervisor leaked wedged descendant $child_pid"
 fi
+
+# The adapter pre-creates the pi-subagents session root (mode 700) beneath
+# the launcher temp dir so the Landstrip policy's pi-subagent-* enumeration
+# always has it to grant; without it, child session transcripts nest in the
+# parent session tree, which the policy deliberately does not grant (T-128).
+[ -d "$parent_tmp/pi-subagent-sessions" ] \
+  || fail "adapter did not create the pi-subagents session root"
+[ "$(stat -c %a "$parent_tmp/pi-subagent-sessions")" = "700" ] \
+  || fail "pi-subagents session root is not mode 700"
+
+# The session-root contract fails closed: a loose-mode or symlinked root, or
+# a configured defaultSessionDir outside the launcher temp contract, must
+# refuse dispatch rather than widen the grant or strand the child (T-128).
+chmod 755 "$pi_subagent_sess"
+run_failure session-root-loose-mode "$ROOT" \
+  env PI_SUBAGENT_CHILD_AGENT=reviewer PI_SUBAGENT_RUN_ID=session-root-guard "$DISPATCH" --json
+assert_file_contains "$tmp/session-root-loose-mode.stderr" 'must be mode 700'
+rm -rf "$pi_subagent_sess"
+ln -s "$parent_tmp/elsewhere" "$pi_subagent_sess"
+run_failure session-root-symlink "$ROOT" \
+  env PI_SUBAGENT_CHILD_AGENT=reviewer PI_SUBAGENT_RUN_ID=session-root-guard "$DISPATCH" --json
+assert_file_contains "$tmp/session-root-symlink.stderr" 'is a symlink'
+rm -f "$pi_subagent_sess"
+rm -f "$test_home/.pi/agent/extensions/subagent/config.json"
+run_failure session-root-no-config "$ROOT" \
+  env PI_SUBAGENT_CHILD_AGENT=reviewer PI_SUBAGENT_RUN_ID=session-root-guard "$DISPATCH" --json
+assert_file_contains "$tmp/session-root-no-config.stderr" 'defaultSessionDir is not configured'
+printf 'not json\n' > "$test_home/.pi/agent/extensions/subagent/config.json"
+run_failure session-root-bad-json "$ROOT" \
+  env PI_SUBAGENT_CHILD_AGENT=reviewer PI_SUBAGENT_RUN_ID=session-root-guard "$DISPATCH" --json
+assert_file_contains "$tmp/session-root-bad-json.stderr" 'defaultSessionDir is not configured'
+mkdir -p "$test_home/.pi/agent/extensions/subagent"
+printf '{"defaultSessionDir": "%s"}\n' "$tmp/outside-root" \
+  > "$test_home/.pi/agent/extensions/subagent/config.json"
+run_failure session-root-bad-config "$ROOT" \
+  env PI_SUBAGENT_CHILD_AGENT=reviewer PI_SUBAGENT_RUN_ID=session-root-guard "$DISPATCH" --json
+assert_file_contains "$tmp/session-root-bad-config.stderr" 'direct pi-subagent-* child'
+printf '{"defaultSessionDir": "%s"}\n' "$parent_tmp/pi-subagent-custom" \
+  > "$test_home/.pi/agent/extensions/subagent/config.json"
+env -u FAKE_PI_MODE PI_SUBAGENT_CHILD_AGENT=reviewer PI_SUBAGENT_RUN_ID=session-root-custom \
+  "$DISPATCH" --json >"$tmp/session-root-custom.stdout" 2>"$tmp/session-root-custom.stderr"
+[ -d "$parent_tmp/pi-subagent-custom" ] \
+  || fail "configured session root was not created"
+[ "$(stat -c %a "$parent_tmp/pi-subagent-custom")" = "700" ] \
+  || fail "configured session root is not mode 700"
 
 printf 'test-qq-dispatch: pass\n'

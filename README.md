@@ -91,15 +91,18 @@ ln -sT "$HOME/projects/qq/skills" "$HOME/.pi/agent/skills"
 ln -sT "$HOME/projects/qq/skills" "$HOME/.codex/skills"
 ```
 
-Set qq's production adapter and role manifests once in the environment that
-launches the accountable Pi session (cockpit/Herdr session configuration or
-shell rc). These are one-time environment settings. Both paths must be absolute
-and point into the Repository's primary `main` checkout:
+The project-local pi extension `.pi/extensions/qq-subagent-env.ts` sets both
+variables in-process for any pi session in this repository (and its
+worktrees), resolved from the checkout the session runs against:
 
-```bash
-export PI_SUBAGENT_PI_BINARY="$HOME/projects/qq/bin/qq-dispatch"
-export PI_SUBAGENT_EXTRA_AGENT_DIRS="$HOME/projects/qq/delegation/manifests/agents"
-```
+- `PI_SUBAGENT_PI_BINARY=<checkout>/bin/qq-dispatch`
+- `PI_SUBAGENT_EXTRA_AGENT_DIRS=<checkout>/delegation/manifests/agents`
+
+Pi auto-discovers the extension once the project is trusted, so delegates
+dispatch confined by construction — no shell exports or launcher wrappers to
+remember. Variables already set in the environment are left untouched, and
+sessions in other projects never load the extension and keep the vanilla
+dispatcher. Relaunch pi (or `/reload`) after install or upgrade.
 
 Set the dispatcher-side pi-subagents config at
 `~/.pi/agent/extensions/subagent/config.json` to include:
@@ -108,15 +111,29 @@ Set the dispatcher-side pi-subagents config at
 {
   "intercomBridge": {
     "mode": "off"
-  }
+  },
+  "defaultSessionDir": "/tmp/pi-subagent-sessions"
 }
 ```
 
 qq delegate visibility uses run artifacts and status, so the intercom bridge
 stays off instead of adding bridge tools to the staged child configuration.
+`defaultSessionDir` keeps child session transcripts under a Landstrip-granted
+temp root; without it, pi-subagents nests child sessions inside the parent
+session tree, which the confinement policy deliberately does not grant. The
+config is required: the adapter refuses dispatch when it is missing or
+malformed. The configured path must be a direct `pi-subagent-*` child of the
+launcher temp directory (`$TMPDIR` or `/tmp`). The project extension
+pre-creates the root (mode 700) at session start and tightens an
+operator-owned loose root; at dispatch the adapter enforces the contract and
+fails closed on a symlink, foreign ownership, or any mode other than 700
+rather than widening the grant.
 
-The adapter and manifests are authoritative qq configuration from primary
-`main`; do not retarget these variables to a Change worktree's copies.
+The extension resolves the adapter and manifests from the checkout the
+session runs in — a session in a Change worktree uses that worktree's
+copies, which travel with the branch. Explicit environment variables always
+win, including empty values (pi-subagents reads those as its vanilla
+fallback); when overriding manually, point at the primary `main` checkout.
 Pi-subagents inherits the one-time setup for every spawn and supplies the child
 role, while its `cwd` selects the assigned worktree. The canonical adapter
 serves any worktree from that Repository, refuses unrelated repositories,
