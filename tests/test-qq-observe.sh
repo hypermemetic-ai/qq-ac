@@ -50,6 +50,17 @@ jq -e '
   and .attributes.tool == "qq-test"
 ' "$store" >/dev/null
 
+(
+  cd "$ROOT"
+  "$OBSERVE" record \
+    --name analyze_run --phase analysis --actor observer \
+    --start 2026-07-24T10:00:00Z --end 2026-07-24T10:00:02.000Z \
+    --trace-id 33333333333333333333333333333333 \
+    --span-id 4444444444444444 --root-span-id 4444444444444444 >/dev/null
+)
+jq -e 'select(.name == "analyze_run") | .phase == "analysis" and .actor == "observer" and .duration_ms == 2000' \
+  <"$store" >/dev/null || fail 'analysis phase span was not accepted'
+
 session="$tmp/session.jsonl"
 cat >"$session" <<'JSONL'
 {"type":"session","version":3,"timestamp":"2026-07-21T11:00:00.000Z"}
@@ -62,7 +73,7 @@ JSONL
     --trace-id aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa \
     --span-id bbbbbbbbbbbbbbbb >/dev/null
 )
-assert_equal 2 "$(wc -l <"$store")" "span records were not appended"
+assert_equal 3 "$(wc -l <"$store")" "span records were not appended"
 tail -n 1 "$store" | jq -e \
   --arg session "$(realpath "$session")" '
   .name == "invoke_workflow"
@@ -95,7 +106,7 @@ set +e
 malformed_status=$?
 set -e
 assert_equal 64 "$malformed_status" "malformed trace context was accepted"
-assert_equal 2 "$(wc -l <"$store")" "a refused record was appended"
+assert_equal 3 "$(wc -l <"$store")" "a refused record was appended"
 
 assert_session_refused() {
   local label="$1" content="$2" expected="$3"
@@ -110,7 +121,7 @@ assert_session_refused() {
   set -e
   assert_equal 64 "$status" "$label session was accepted"
   assert_file_contains "$tmp/$label.stderr" "$expected"
-  assert_equal 2 "$(wc -l <"$store")" "$label appended a span"
+  assert_equal 3 "$(wc -l <"$store")" "$label appended a span"
 }
 
 assert_session_refused version-999 \
