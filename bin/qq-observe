@@ -459,7 +459,7 @@ def pi_first_record(path):
     return True, ""
 
 
-def content_contains(path, text):
+def content_match(path, text):
     needle = text.encode("utf-8")
     overlap = max(0, len(needle) - 1)
     tail = b""
@@ -474,7 +474,11 @@ def content_contains(path, text):
                     return True
                 tail = block[-overlap:] if overlap else b""
     except OSError:
-        return False
+        return None
+
+
+def content_contains(path, text):
+    return content_match(path, text) is True
 
 
 def session_in_window(path, start, end):
@@ -858,6 +862,33 @@ def assemble(values):
                 and regular_file(parent)
                 and content_contains(parent, branch)
             ):
+                session_file_value = status_records[run_id]["session_file"]
+                if not isinstance(session_file_value, str) or not os.path.isabs(session_file_value):
+                    append_unknown(
+                        unknown, status_path,
+                        "weak delegate sessionFile is missing or not an absolute path",
+                    )
+                    continue
+                session_file = Path(os.path.realpath(session_file_value))
+                if not regular_file(session_file):
+                    append_unknown(
+                        unknown, session_file,
+                        "weak delegate sessionFile is missing or non-regular",
+                    )
+                    continue
+                branch_match = content_match(session_file, branch)
+                if branch_match is None:
+                    append_unknown(
+                        unknown, session_file,
+                        "weak delegate sessionFile is unreadable",
+                    )
+                    continue
+                if not branch_match:
+                    append_unknown(
+                        unknown, session_file,
+                        "weak delegate transcript does not mention the PR branch",
+                    )
+                    continue
                 selected_runs[run_id] = "retired-worktree-content"
     elif async_root.is_symlink():
         fail(f"async run root is not a directory: {async_root}", 65)
