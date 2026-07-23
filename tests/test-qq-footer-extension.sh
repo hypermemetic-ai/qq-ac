@@ -274,7 +274,7 @@ const codexLine = codex.render()[1];
 assert.equal(codex.fetches[0].url, "https://chatgpt.com/backend-api/wham/usage");
 assert.match(codex.fetches[0].options.headers.Authorization, /^Bearer test-codex-/);
 assert.equal(codex.fetches[0].options.headers["ChatGPT-Account-Id"], "test-account");
-assert.ok(codexLine.includes("C ▓▓▓░░░░░ wk"), "34% did not round to three filled cells");
+assert.ok(codexLine.includes("CX ▓▓▓░░░░░ wk"), "34% did not round to three filled cells");
 assert.ok(!codexLine.includes(" · "), "null Codex secondary window was not skipped");
 assert.ok(codexLine.endsWith("gpt-5.6-codex • thinking off"));
 assert.ok(!codexLine.includes("(openai-codex)"), "single-provider prefix was not omitted");

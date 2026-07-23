@@ -15,7 +15,7 @@ const EMPTY_CELL = "░";
 const STATUS_BLOCKLIST = new Set(["pi-lens-lsp", "hunk", "merge-ready"]);
 const PROVIDER_MARKS = {
   "kimi-coding": "K",
-  "openai-codex": "C",
+  "openai-codex": "CX",
   anthropic: "A",
 };
 
