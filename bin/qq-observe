@@ -1539,13 +1539,9 @@ def read_ledger_events(fd, since=None):
             chunks.append(chunk)
     except OSError as error:
         fail(f"cannot read ledger event store: {error}", 65)
-    data = b"".join(chunks)
-    if data and not data.endswith(b"\n"):
-        last_newline = data.rfind(b"\n")
-        data = data[:last_newline + 1] if last_newline >= 0 else b""
     events = []
     unknown = 0
-    for raw in data.splitlines():
+    for raw in b"".join(chunks).splitlines():
         try:
             item = json.loads(
                 raw.decode("utf-8"),
@@ -1783,25 +1779,25 @@ def digest_score_rows(events):
     kind_by_key = {key: event["kind"] for key, event in latest_by_key.items()}
     key_verdict = {}
     kind_verdict = {}
-    for position, event in enumerate(events):
+    newest_first = sorted(
+        enumerate(events),
+        key=lambda entry: (time_value(entry[1]["ts"]), entry[0]),
+        reverse=True,
+    )
+    for _, event in newest_first:
         if event["type"] != "disposition":
             continue
-        order = (time_value(event["ts"]), position)
         for outcome in event["outcomes"]:
             key = outcome["recurrence_key"]
             verdict = outcome["verdict"]
-            if key not in key_verdict or order > key_verdict[key][0]:
-                key_verdict[key] = (order, verdict)
+            key_verdict.setdefault(key, verdict)
             if key in kind_by_key:
-                kind = kind_by_key[key]
-                if kind not in kind_verdict or order > kind_verdict[kind][0]:
-                    kind_verdict[kind] = (order, verdict)
+                kind_verdict.setdefault(kind_by_key[key], verdict)
     rows = []
     for key, history in findings.items():
         latest = latest_by_key[key]
         prs = sorted({event["pr"] for _, event in history})
-        verdict_row = key_verdict.get(key, kind_verdict.get(latest["kind"]))
-        verdict = verdict_row[1] if verdict_row is not None else None
+        verdict = key_verdict.get(key, kind_verdict.get(latest["kind"]))
         multiplier = VERDICT_MULTIPLIER.get(verdict, 1.0)
         score = len(prs) * CONFIDENCE_WEIGHT[latest["confidence"]] * multiplier
         rows.append({
