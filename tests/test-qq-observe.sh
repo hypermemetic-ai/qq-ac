@@ -73,7 +73,7 @@ JSONL
     --trace-id aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa \
     --span-id bbbbbbbbbbbbbbbb >/dev/null
 )
-assert_equal 2 "$(wc -l <"$store")" "span records were not appended"
+assert_equal 3 "$(wc -l <"$store")" "span records were not appended"
 tail -n 1 "$store" | jq -e \
   --arg session "$(realpath "$session")" '
   .name == "invoke_workflow"
@@ -106,7 +106,7 @@ set +e
 malformed_status=$?
 set -e
 assert_equal 64 "$malformed_status" "malformed trace context was accepted"
-assert_equal 2 "$(wc -l <"$store")" "a refused record was appended"
+assert_equal 3 "$(wc -l <"$store")" "a refused record was appended"
 
 assert_session_refused() {
   local label="$1" content="$2" expected="$3"
@@ -121,7 +121,7 @@ assert_session_refused() {
   set -e
   assert_equal 64 "$status" "$label session was accepted"
   assert_file_contains "$tmp/$label.stderr" "$expected"
-  assert_equal 2 "$(wc -l <"$store")" "$label appended a span"
+  assert_equal 3 "$(wc -l <"$store")" "$label appended a span"
 }
 
 assert_session_refused version-999 \
