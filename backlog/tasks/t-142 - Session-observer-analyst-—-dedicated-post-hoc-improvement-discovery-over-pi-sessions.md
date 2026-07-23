@@ -6,7 +6,7 @@ title: >-
 status: To Do
 assignee: []
 created_date: '2026-07-22 22:46'
-updated_date: '2026-07-23 04:23'
+updated_date: '2026-07-23 06:25'
 labels: []
 dependencies: []
 documentation:
@@ -36,3 +36,9 @@ Decision ledger: commissioning the research sweep — operator instruction, acco
 - [x] #2 Operator disposition recorded for capture mode (post-hoc vs live) and adopt-vs-build direction
 - [ ] #3 Observer v1 (if build): given a real completed qq session, emits a ranked analysis document over the full record including reasoning, with the research doc's pitfall mitigations demonstrably applied (analyzer-failure isolation, real impact/recurrence ranking, defensive transcript parsing, verified analysis delivery)
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+2026-07-23: Change ② (observer v0) delivered through six fresh-context review passes and a convergence-breaker arc — operator ruled exactness-by-representation (integer duration_ms/token totals, canonical session identity). PR #218 green and handed off. Calibration venue per the consumption-model directive: architect discussions (Change ⑤); first-N citation verification happens there, not as a pre-merge gate. Remaining: ③ assembler/trigger + analyst-trace storage; ④ ledger/digest + discussed-state; ⑤ architect extension + skill + tab wiring.
+<!-- SECTION:NOTES:END -->
