@@ -409,6 +409,61 @@ awk '
 assert_file_not_matches "$tmp/windowed-digest.md" '`alpha`' \
   'finding whose latest event predates --since was listed'
 
+# The ledger is derived: marked analyses can reconstruct it after total loss.
+primary_state="$XDG_STATE_HOME"
+primary_runs="$runs"
+primary_events="$events"
+export XDG_STATE_HOME="$tmp/rebuild-state"
+runs="$XDG_STATE_HOME/qq/observer/runs"
+events="$XDG_STATE_HOME/qq/observer/ledger/events.jsonl"
+rebuild_20="$(make_run pr-20 20 guided 2026-10-20T10:00:00Z "$first_episodes")"
+gamma="$(make_episode gamma waste 'Gamma opportunity')"
+rebuild_21_episodes="$(jq -cn --argjson alpha "$alpha" --argjson gamma "$gamma" '[$alpha,$gamma]')"
+rebuild_21="$(make_run pr-21 21 guided 2026-10-21T10:00:00Z "$rebuild_21_episodes")"
+rebuild_failed="$(make_run pr-22 22 guided 2026-10-22T10:00:00Z '[]')"
+rm "$rebuild_failed/analysis.json"
+printf '%s\n' '{"schema":"qq-observer.analysis","schema_version":1,"status":"analysis_failed","reason":"fixture"}' \
+  >"$rebuild_failed/analysis_failed.json"
+rebuild_missing="$runs/pr-23"
+mkdir -p "$rebuild_missing"
+jq -cn --arg repo "$ROOT" '{
+  schema:"qq-observer.package",schema_version:1,pr:23,variant:"guided",
+  assembled_at:"2026-10-23T10:00:00Z",repo:$repo,sessions:[]
+}' >"$rebuild_missing/package.json"
+rebuild_unmarked="$(make_run pr-24 24 guided 2026-10-24T10:00:00Z "$first_episodes")"
+
+"$OBSERVE" ledger-update --run "$rebuild_20" >"$tmp/rebuild-update-20.json"
+"$OBSERVE" ledger-update --run "$rebuild_21" >"$tmp/rebuild-update-21.json"
+jq -cS 'del(.ts)' "$events" >"$tmp/pre-loss-events.jsonl"
+
+"$OBSERVE" ledger-rebuild >"$tmp/rebuild-intact.json"
+jq -e '
+  .runs_seen == 5 and .runs_replayed == 2
+  and .events_appended == 0 and .events_skipped == 5
+' "$tmp/rebuild-intact.json" >/dev/null || fail 'intact-ledger rebuild was not a no-op'
+
+rm -rf "$(dirname "$events")"
+"$OBSERVE" ledger-rebuild >"$tmp/rebuilt.json"
+jq -e '
+  .runs_seen == 5 and .runs_replayed == 2
+  and .events_appended == 5 and .events_skipped == 0
+' "$tmp/rebuilt.json" >/dev/null || fail 'lost-ledger rebuild summary is wrong'
+jq -cS 'del(.ts)' "$events" >"$tmp/rebuilt-events.jsonl"
+cmp "$tmp/pre-loss-events.jsonl" "$tmp/rebuilt-events.jsonl" >/dev/null \
+  || fail 'rebuilt ledger event content or order differs from the pre-loss sequence'
+
+before="$(wc -l <"$events")"
+"$OBSERVE" ledger-rebuild >"$tmp/rebuilt-again.json"
+assert_equal "$before" "$(wc -l <"$events")" 'second rebuild appended events'
+jq -e '
+  .runs_seen == 5 and .runs_replayed == 2
+  and .events_appended == 0 and .events_skipped == 5
+' "$tmp/rebuilt-again.json" >/dev/null || fail 'second rebuild was not a full no-op'
+
+export XDG_STATE_HOME="$primary_state"
+runs="$primary_runs"
+events="$primary_events"
+
 # Refusal paths do not fabricate events or state.
 missing="$runs/pr-6"
 missing_blind="$runs/pr-6-blind"

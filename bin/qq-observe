@@ -27,6 +27,7 @@ usage:
   qq-observe finalize --run DIR \
     (--analysis FILE --analyst-trace FILE | --failed REASON [--analyst-trace FILE])
   qq-observe ledger-update --run DIR
+  qq-observe ledger-rebuild
   qq-observe digest [--since ISO]
   qq-observe mark-discussed --run DIR --outcomes FILE.json
   qq-observe rounds
@@ -65,8 +66,8 @@ case "${1:-}" in
     exit 0
     ;;
   record | read-session | summarize | facts | signals | validate-analysis | \
-  assemble | verify-delivery | render-doc | finalize | ledger-update | digest | \
-  mark-discussed | rounds | record-comparison) command="$1"; shift ;;
+  assemble | verify-delivery | render-doc | finalize | ledger-update | ledger-rebuild | \
+  digest | mark-discussed | rounds | record-comparison) command="$1"; shift ;;
   *) usage ;;
 esac
 
@@ -80,8 +81,8 @@ python_binary="$QQ_BIN_RESULT"
 # them before the legacy Repository/store bootstrap so their explicit --repo
 # and --run subjects remain authoritative.
 case "$command" in
-  assemble | verify-delivery | render-doc | finalize | ledger-update | digest | \
-  mark-discussed | rounds | record-comparison)
+  assemble | verify-delivery | render-doc | finalize | ledger-update | ledger-rebuild | \
+  digest | mark-discussed | rounds | record-comparison)
     observer_git=""
     observer_gh=""
     if [[ "$command" == assemble || "$command" == verify-delivery ]]; then
@@ -1350,6 +1351,27 @@ def observer_store_root(create=False):
     return root
 
 
+def observer_run_directories():
+    runs_root = observer_runs_root(create=False)
+    if not runs_root.exists():
+        return []
+    try:
+        root_info = os.lstat(runs_root)
+    except OSError as error:
+        fail(f"cannot inspect observer runs root: {error}", 65)
+    if not stat.S_ISDIR(root_info.st_mode):
+        fail("observer runs root is not a directory", 65)
+    run_dirs = []
+    for run_dir in sorted(runs_root.iterdir(), key=lambda path: path.name):
+        try:
+            info = os.lstat(run_dir)
+        except OSError as error:
+            fail(f"cannot inspect observer run {run_dir}: {error}", 65)
+        if stat.S_ISDIR(info.st_mode):
+            run_dirs.append(run_dir)
+    return run_dirs
+
+
 def package_identity(run_dir, require_timestamp=False):
     package = json_document(
         read_regular(run_dir / "package.json", "observer package"),
@@ -1484,6 +1506,9 @@ def repair_ledger_tail(fd):
 
 def open_ledger_events():
     root = observer_store_root(create=True)
+    # The ledger is derived from run packages. Appends and tail repair protect
+    # process-crash modes; power-loss metadata ordering is an accepted residual
+    # risk. Recovery is to remove this directory and run ledger-rebuild.
     ledger_dir = root / "ledger"
     ensure_directory(ledger_dir, root)
     path = ledger_dir / "events.jsonl"
@@ -1577,7 +1602,7 @@ def append_ledger_events(fd, events):
         fail(f"cannot append ledger events: {error}", 65)
 
 
-def ledger_update_run(run_dir):
+def ledger_update_run(run_dir, skipped_promotions=None):
     analysis_path = run_dir / "analysis.json"
     if not regular_file(analysis_path):
         fail(f"finalized analysis is missing: {analysis_path}", 65)
@@ -1609,6 +1634,7 @@ def ledger_update_run(run_dir):
                 prs_by_key.setdefault(event["recurrence_key"], set()).add(event["pr"])
                 kinds_by_key[event["recurrence_key"]] = event["kind"]
         findings = []
+        events_skipped = 0
         for index, episode in enumerate(analysis["episodes"], 1):
             confidence = episode["confidence"]
             key = episode["recurrence_key"]
@@ -1632,20 +1658,28 @@ def ledger_update_run(run_dir):
             if identity not in existing_findings:
                 findings.append(event)
                 existing_findings.add(identity)
+            else:
+                events_skipped += 1
             prs_by_key.setdefault(key, set()).add(pr)
             kinds_by_key[key] = kind
         promotions = []
         for key in sorted(prs_by_key):
             prs = sorted(prs_by_key[key])
-            if len(prs) >= 2 and key not in already_promoted:
+            if len(prs) < 2:
+                continue
+            if key not in already_promoted:
                 promotions.append(ledger_event(
                     "promoted", recurrence_key=key,
                     kind=kinds_by_key[key], prs=prs,
                 ))
+            elif skipped_promotions is not None and key not in skipped_promotions:
+                events_skipped += 1
+                skipped_promotions.add(key)
         append_ledger_events(fd, findings + promotions)
         atomic_append(marker, marker_data)
         return {
             "findings": len(findings), "promoted": len(promotions),
+            "events_skipped": events_skipped,
             "already_applied": marker_exists and not findings and not promotions,
         }
     finally:
@@ -1659,6 +1693,31 @@ def ledger_update(values):
     run_dir = run_directory(options["--run"])
     result = ledger_update_run(run_dir)
     emit({"status": "updated", "run_dir": os.fspath(run_dir), **result})
+
+
+def ledger_rebuild(values):
+    if values:
+        fail(f"invalid or incomplete option: {values[0]}")
+    run_dirs = observer_run_directories()
+    runs_replayed = 0
+    events_appended = 0
+    events_skipped = 0
+    skipped_promotions = set()
+    for run_dir in run_dirs:
+        if (
+            regular_file(run_dir / "analysis_failed.json")
+            or not regular_file(run_dir / "analysis.json")
+            or not regular_file(run_dir / ".ledger-applied")
+        ):
+            continue
+        result = ledger_update_run(run_dir, skipped_promotions)
+        runs_replayed += 1
+        events_appended += result["findings"] + result["promoted"]
+        events_skipped += result["events_skipped"]
+    emit({
+        "runs_seen": len(run_dirs), "runs_replayed": runs_replayed,
+        "events_appended": events_appended, "events_skipped": events_skipped,
+    })
 
 
 def mark_discussed(values):
@@ -1704,23 +1763,8 @@ def mark_discussed(values):
 
 
 def observer_run_rows(since=None):
-    runs_root = observer_runs_root(create=False)
-    if not runs_root.exists():
-        return []
-    try:
-        root_info = os.lstat(runs_root)
-    except OSError as error:
-        fail(f"cannot inspect observer runs root: {error}", 65)
-    if not stat.S_ISDIR(root_info.st_mode):
-        fail("observer runs root is not a directory", 65)
     rows = []
-    for run_dir in sorted(runs_root.iterdir(), key=lambda path: path.name):
-        try:
-            info = os.lstat(run_dir)
-        except OSError as error:
-            fail(f"cannot inspect observer run {run_dir}: {error}", 65)
-        if not stat.S_ISDIR(info.st_mode):
-            continue
+    for run_dir in observer_run_directories():
         pr, variant, timestamp = package_identity(run_dir, require_timestamp=True)
         timestamp_value = time_value(timestamp)
         if since is not None and timestamp_value < since:
@@ -2221,6 +2265,8 @@ elif command == "finalize":
     finalize(args)
 elif command == "ledger-update":
     ledger_update(args)
+elif command == "ledger-rebuild":
+    ledger_rebuild(args)
 elif command == "digest":
     digest(args)
 elif command == "mark-discussed":
