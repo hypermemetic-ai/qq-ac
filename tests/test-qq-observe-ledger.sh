@@ -289,6 +289,12 @@ run_5_blind="$(make_run pr-5-blind 5 blind 2026-08-05T10:01:00Z "$blind_episodes
   >"$tmp/comparison.json"
 jq -e '.candidates == 3' "$tmp/comparison.json" >/dev/null \
   || fail 'comparison emitted the wrong candidate count'
+jq -e --arg guided "$run_5" --arg blind "$run_5_blind" '
+  .schema == "qq-observer.comparison" and .schema_version == 1
+  and .guided == $guided and .blind == $blind
+  and (.written_at | test("^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\\.[0-9]{3}Z$"))
+  and (.candidates | length == 3)
+' "$run_5/comparison.json" >/dev/null || fail 'comparison record has the wrong shape'
 jq -s -e '
   [.[] | select(.type == "signal_tune_candidate" and .pr == 5)
     | {direction,evidence,signal_kind:(.signal_kind // null)}] == [
@@ -297,6 +303,28 @@ jq -s -e '
     {direction:"prune",evidence:"unabsorbed",signal_kind:"compaction"}
   ]
 ' "$events" >/dev/null || fail 'comparison evidence directions are wrong'
+comparison_before="$(wc -l <"$events")"
+cp "$run_5/comparison.json" "$tmp/comparison-record-before.json"
+"$OBSERVE" record-comparison --guided "$run_5" --blind "$run_5_blind" \
+  >"$tmp/comparison-again.json"
+assert_equal "$comparison_before" "$(wc -l <"$events")" \
+  'identical comparison appended candidates'
+cmp "$tmp/comparison-record-before.json" "$run_5/comparison.json" >/dev/null \
+  || fail 'identical comparison rewrote its durable record'
+cp "$run_5_blind/analysis.json" "$tmp/blind-analysis-before.json"
+jq --argjson episode "$guided_only" '.episodes += [$episode]' \
+  "$run_5_blind/analysis.json" >"$tmp/blind-analysis-different.json"
+cp "$tmp/blind-analysis-different.json" "$run_5_blind/analysis.json"
+set +e
+"$OBSERVE" record-comparison --guided "$run_5" --blind "$run_5_blind" \
+  >"$tmp/comparison-different.stdout" 2>"$tmp/comparison-different.stderr"
+status=$?
+set -e
+cp "$tmp/blind-analysis-before.json" "$run_5_blind/analysis.json"
+assert_equal 65 "$status" 'differing second comparison was accepted'
+assert_file_contains "$tmp/comparison-different.stderr" 'append-only conflict'
+assert_equal "$comparison_before" "$(wc -l <"$events")" \
+  'differing comparison appended candidates before refusing'
 
 # Promotion and disposition state remain global when findings are windowed.
 jq -cn '{
@@ -417,6 +445,8 @@ export XDG_STATE_HOME="$tmp/rebuild-state"
 runs="$XDG_STATE_HOME/qq/observer/runs"
 events="$XDG_STATE_HOME/qq/observer/ledger/events.jsonl"
 rebuild_20="$(make_run pr-20 20 guided 2026-10-20T10:00:00Z "$first_episodes")"
+rebuild_20_blind_episodes="$(jq -cn --argjson alpha "$alpha" '[$alpha]')"
+rebuild_20_blind="$(make_run pr-20-blind 20 blind 2026-10-20T10:01:00Z "$rebuild_20_blind_episodes")"
 gamma="$(make_episode gamma waste 'Gamma opportunity')"
 rebuild_21_episodes="$(jq -cn --argjson alpha "$alpha" --argjson gamma "$gamma" '[$alpha,$gamma]')"
 rebuild_21="$(make_run pr-21 21 guided 2026-10-21T10:00:00Z "$rebuild_21_episodes")"
@@ -434,30 +464,50 @@ rebuild_unmarked="$(make_run pr-24 24 guided 2026-10-24T10:00:00Z "$first_episod
 
 "$OBSERVE" ledger-update --run "$rebuild_20" >"$tmp/rebuild-update-20.json"
 "$OBSERVE" ledger-update --run "$rebuild_21" >"$tmp/rebuild-update-21.json"
-jq -cS '.' "$events" >"$tmp/pre-loss-events.jsonl"
+"$OBSERVE" mark-discussed --run "$rebuild_21" --outcomes "$outcomes" \
+  >"$tmp/rebuild-discussed-21.json"
+"$OBSERVE" record-comparison --guided "$rebuild_20" --blind "$rebuild_20_blind" \
+  >"$tmp/rebuild-comparison-20.json"
+touch -d '2026-10-21T11:00:00.000Z' "$rebuild_21/discussed.json"
+touch -d '2026-10-21T12:00:00.000Z' "$rebuild_20/comparison.json"
+jq -cS 'if .type == "disposition" or .type == "signal_tune_candidate" then del(.ts) else . end' \
+  "$events" | sort >"$tmp/pre-loss-events.jsonl"
 
 "$OBSERVE" ledger-rebuild >"$tmp/rebuild-intact.json"
 jq -e '
-  .runs_seen == 5 and .runs_replayed == 2
-  and .events_appended == 0 and .events_skipped == 5
+  .runs_seen == 6 and .runs_replayed == 2
+  and .events_appended == 0 and .events_skipped == 7
 ' "$tmp/rebuild-intact.json" >/dev/null || fail 'intact-ledger rebuild was not a no-op'
 
 rm -rf "$(dirname "$events")"
 "$OBSERVE" ledger-rebuild >"$tmp/rebuilt.json"
 jq -e '
-  .runs_seen == 5 and .runs_replayed == 2
-  and .events_appended == 5 and .events_skipped == 0
+  .runs_seen == 6 and .runs_replayed == 2
+  and .events_appended == 7 and .events_skipped == 0
 ' "$tmp/rebuilt.json" >/dev/null || fail 'lost-ledger rebuild summary is wrong'
-jq -cS '.' "$events" >"$tmp/rebuilt-events.jsonl"
+jq -cS 'if .type == "disposition" or .type == "signal_tune_candidate" then del(.ts) else . end' \
+  "$events" | sort >"$tmp/rebuilt-events.jsonl"
 cmp "$tmp/pre-loss-events.jsonl" "$tmp/rebuilt-events.jsonl" >/dev/null \
-  || fail 'rebuilt ledger event content or order differs from the pre-loss sequence'
+  || fail 'rebuilt ledger event content differs from the pre-loss events'
+jq -s -e '
+  ([.[] | .type] | sort) ==
+    ["disposition","finding_seen","finding_seen","finding_seen","finding_seen","promoted","signal_tune_candidate"]
+  and ([.[] | select(.type == "disposition")] | length == 1
+       and .[0].outcomes[0].note == "Keep it.")
+  and ([.[] | select(.type == "signal_tune_candidate")] | length == 1
+       and .[0].recurrence_key == "beta" and .[0].direction == "prune")
+' "$events" >/dev/null || fail 'rebuild did not restore every durable event kind'
+jq -s -e '
+  ([.[] | select(.type == "disposition") | .ts] == ["2026-10-21T11:00:00.000Z"])
+  and ([.[] | select(.type == "signal_tune_candidate") | .ts] == ["2026-10-21T12:00:00.000Z"])
+' "$events" >/dev/null || fail 'replayed durable event timestamps do not use record mtimes'
 
 before="$(wc -l <"$events")"
 "$OBSERVE" ledger-rebuild >"$tmp/rebuilt-again.json"
 assert_equal "$before" "$(wc -l <"$events")" 'second rebuild appended events'
 jq -e '
-  .runs_seen == 5 and .runs_replayed == 2
-  and .events_appended == 0 and .events_skipped == 5
+  .runs_seen == 6 and .runs_replayed == 2
+  and .events_appended == 0 and .events_skipped == 7
 ' "$tmp/rebuilt-again.json" >/dev/null || fail 'second rebuild was not a full no-op'
 
 export XDG_STATE_HOME="$primary_state"

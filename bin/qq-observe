@@ -1336,6 +1336,8 @@ def minimal_analysis(item):
 
 LEDGER_SCHEMA = "qq-observer.ledger-event"
 LEDGER_VERSION = 1
+COMPARISON_SCHEMA = "qq-observer.comparison"
+COMPARISON_VERSION = 1
 CONFIDENCE_WEIGHT = {"high": 3, "medium": 2, "low": 1}
 VERDICT_MULTIPLIER = {"accepted": 1.5, "rejected": 0.5, "reshaped": 1.0}
 
@@ -1475,11 +1477,59 @@ def valid_ledger_event(item):
     return False
 
 
+def valid_comparison_record(item):
+    if (
+        not isinstance(item, dict)
+        or set(item) != {
+            "schema", "schema_version", "guided", "blind", "written_at", "candidates",
+        }
+        or item.get("schema") != COMPARISON_SCHEMA
+        or item.get("schema_version") != COMPARISON_VERSION
+        or not isinstance(item.get("guided"), str) or not item["guided"]
+        or not isinstance(item.get("blind"), str) or not item["blind"]
+        or not isinstance(item.get("written_at"), str)
+        or not isinstance(item.get("candidates"), list)
+    ):
+        return False
+    try:
+        time_value(item["written_at"])
+    except ValueError:
+        return False
+    identities = set()
+    for candidate in item["candidates"]:
+        if not isinstance(candidate, dict):
+            return False
+        required = {
+            "pr", "direction", "episode_title", "recurrence_key", "evidence",
+        }
+        if set(candidate) not in (required, required | {"signal_kind"}):
+            return False
+        event = {
+            "schema": LEDGER_SCHEMA, "schema_version": LEDGER_VERSION,
+            "ts": item["written_at"], "type": "signal_tune_candidate", **candidate,
+        }
+        if not valid_ledger_event(event):
+            return False
+        identity = json.dumps(candidate, separators=(",", ":"), sort_keys=True)
+        if identity in identities:
+            return False
+        identities.add(identity)
+    return True
+
+
 def ledger_event(event_type, **fields):
     return {
         "schema": LEDGER_SCHEMA, "schema_version": LEDGER_VERSION,
         "ts": utc_now(), "type": event_type, **fields,
     }
+
+
+def mtime_timestamp(info):
+    seconds, nanoseconds = divmod(info.st_mtime_ns, 1_000_000_000)
+    value = dt.datetime.fromtimestamp(seconds, dt.timezone.utc) + dt.timedelta(
+        microseconds=nanoseconds // 1000,
+    )
+    return value.isoformat(timespec="milliseconds").replace("+00:00", "Z")
 
 
 def repair_ledger_tail(fd):
@@ -1696,27 +1746,141 @@ def ledger_update(values):
     emit({"status": "updated", "run_dir": os.fspath(run_dir), **result})
 
 
+def comparison_candidate_content(event):
+    content = {
+        field: event[field]
+        for field in ("pr", "direction", "episode_title", "recurrence_key", "evidence")
+    }
+    if "signal_kind" in event:
+        content["signal_kind"] = event["signal_kind"]
+    return content
+
+
+def replay_disposition(run_dir, timestamp, existing):
+    path = run_dir / "discussed.json"
+    mark = json_document(read_regular(path, "discussed mark"), "discussed mark")
+    pr, _, _ = package_identity(run_dir)
+    if (
+        not valid_ledger_event(mark) or mark.get("type") != "disposition"
+        or mark.get("pr") != pr
+    ):
+        fail(f"invalid discussed mark at {path}", 65)
+    identity = (pr, json.dumps(mark["outcomes"], separators=(",", ":"), sort_keys=True))
+    if identity in existing:
+        return 0, 1
+    event = ledger_event(
+        "disposition", ts=timestamp, pr=pr, outcomes=mark["outcomes"],
+    )
+    fd = open_ledger_events()
+    try:
+        append_ledger_events(fd, [event])
+    finally:
+        close_ledger_events(fd)
+    existing.add(identity)
+    return 1, 0
+
+
+def replay_comparison(run_dir, timestamp, available):
+    path = run_dir / "comparison.json"
+    record = json_document(read_regular(path, "comparison record"), "comparison record")
+    pr, variant, _ = package_identity(run_dir)
+    if (
+        not valid_comparison_record(record)
+        or variant != "guided"
+        or record.get("guided") != os.fspath(run_dir)
+        or any(candidate["pr"] != pr for candidate in record.get("candidates", []))
+    ):
+        fail(f"invalid comparison record at {path}", 65)
+    events = []
+    skipped = 0
+    for candidate in record["candidates"]:
+        identity = json.dumps(candidate, separators=(",", ":"), sort_keys=True)
+        if available.get(identity, 0):
+            available[identity] -= 1
+            skipped += 1
+            continue
+        event = ledger_event("signal_tune_candidate", ts=timestamp, **candidate)
+        if not valid_ledger_event(event):
+            fail(f"invalid comparison candidate at {path}", 65)
+        events.append(event)
+    fd = open_ledger_events()
+    try:
+        append_ledger_events(fd, events)
+    finally:
+        close_ledger_events(fd)
+    return len(events), skipped
+
+
 def ledger_rebuild(values):
     if values:
         fail(f"invalid or incomplete option: {values[0]}")
     run_dirs = observer_run_directories()
-    runs_replayed = 0
+    replay_items = []
+    replayed_runs = set()
+    for run_dir in run_dirs:
+        analysis = run_dir / "analysis.json"
+        marker = run_dir / ".ledger-applied"
+        if (
+            not regular_file(run_dir / "analysis_failed.json")
+            and regular_file(analysis) and regular_file(marker)
+        ):
+            replay_items.append((run_dir, "finding_seen", os.lstat(marker)))
+            replayed_runs.add(run_dir)
+        for name, kind in (
+            ("discussed.json", "disposition"),
+            ("comparison.json", "signal_tune_candidate"),
+        ):
+            path = run_dir / name
+            if os.path.lexists(path):
+                try:
+                    info = os.lstat(path)
+                except OSError as error:
+                    fail(f"cannot inspect replay record {path}: {error}", 65)
+                if not stat.S_ISREG(info.st_mode):
+                    fail(f"replay record is not a regular file: {path}", 65)
+                replay_items.append((run_dir, kind, info))
+                replayed_runs.add(run_dir)
+
+    fd = open_ledger_events()
+    try:
+        previous, _ = read_ledger_events(fd)
+    finally:
+        close_ledger_events(fd)
+    existing_dispositions = {
+        (event["pr"], json.dumps(event["outcomes"], separators=(",", ":"), sort_keys=True))
+        for event in previous if event["type"] == "disposition"
+    }
+    available_candidates = {}
+    for event in previous:
+        if event["type"] != "signal_tune_candidate":
+            continue
+        identity = json.dumps(
+            comparison_candidate_content(event), separators=(",", ":"), sort_keys=True,
+        )
+        available_candidates[identity] = available_candidates.get(identity, 0) + 1
+
     events_appended = 0
     events_skipped = 0
     skipped_promotions = set()
-    for run_dir in run_dirs:
-        if (
-            regular_file(run_dir / "analysis_failed.json")
-            or not regular_file(run_dir / "analysis.json")
-            or not regular_file(run_dir / ".ledger-applied")
-        ):
-            continue
-        result = ledger_update_run(run_dir, skipped_promotions)
-        runs_replayed += 1
-        events_appended += result["findings"] + result["promoted"]
-        events_skipped += result["events_skipped"]
+    for run_dir, kind, info in replay_items:
+        if kind == "finding_seen":
+            result = ledger_update_run(run_dir, skipped_promotions)
+            events_appended += result["findings"] + result["promoted"]
+            events_skipped += result["events_skipped"]
+        elif kind == "disposition":
+            appended, skipped = replay_disposition(
+                run_dir, mtime_timestamp(info), existing_dispositions,
+            )
+            events_appended += appended
+            events_skipped += skipped
+        else:
+            appended, skipped = replay_comparison(
+                run_dir, mtime_timestamp(info), available_candidates,
+            )
+            events_appended += appended
+            events_skipped += skipped
     emit({
-        "runs_seen": len(run_dirs), "runs_replayed": runs_replayed,
+        "runs_seen": len(run_dirs), "runs_replayed": len(replayed_runs),
         "events_appended": events_appended, "events_skipped": events_skipped,
     })
 
@@ -1966,40 +2130,68 @@ def record_comparison(values):
     blind_by_key = {episode["recurrence_key"]: episode for episode in blind["episodes"]}
     if any(not key for key in guided_by_key) or any(not key for key in blind_by_key):
         fail("comparison analysis has an empty recurrence key", 65)
-    events = []
+    candidates = []
     for key in sorted(guided_by_key.keys() - blind_by_key.keys()):
         episode = guided_by_key[key]
-        events.append(ledger_event(
-            "signal_tune_candidate", pr=guided_pr, direction="prune",
-            episode_title=episode["title"], recurrence_key=key,
-            evidence="guided-only",
-        ))
+        candidates.append({
+            "pr": guided_pr, "direction": "prune",
+            "episode_title": episode["title"], "recurrence_key": key,
+            "evidence": "guided-only",
+        })
     for key in sorted(blind_by_key.keys() - guided_by_key.keys()):
         episode = blind_by_key[key]
-        events.append(ledger_event(
-            "signal_tune_candidate", pr=guided_pr, direction="promote",
-            episode_title=episode["title"], recurrence_key=key,
-            evidence="blind-only",
-        ))
+        candidates.append({
+            "pr": guided_pr, "direction": "promote",
+            "episode_title": episode["title"], "recurrence_key": key,
+            "evidence": "blind-only",
+        })
     guided_kinds = {episode["kind"] for episode in guided["episodes"]}
     dropped = {}
     for signal in guided["dropped_signals"]:
         dropped.setdefault(signal["kind"], signal)
     for kind in sorted(dropped.keys() - guided_kinds):
         signal = dropped[kind]
-        events.append(ledger_event(
-            "signal_tune_candidate", pr=guided_pr, direction="prune",
-            signal_kind=kind, episode_title=f"Unabsorbed {kind} signal",
-            recurrence_key=f"signal:{kind}", evidence="unabsorbed",
-        ))
-    if not all(valid_ledger_event(event) for event in events):
-        fail("comparison produced an invalid ledger event", 65)
+        candidates.append({
+            "pr": guided_pr, "direction": "prune", "signal_kind": kind,
+            "episode_title": f"Unabsorbed {kind} signal",
+            "recurrence_key": f"signal:{kind}", "evidence": "unabsorbed",
+        })
+    path = guided_dir / "comparison.json"
     fd = open_ledger_events()
     try:
-        append_ledger_events(fd, events)
+        old = existing_bytes(path)
+        if old is not None:
+            record = json_document(old, "comparison record")
+            if (
+                not valid_comparison_record(record)
+                or record["guided"] != os.fspath(guided_dir)
+                or record["blind"] != os.fspath(blind_dir)
+                or record["candidates"] != candidates
+            ):
+                fail(f"append-only conflict at {path}", 65)
+            status = "already recorded"
+        else:
+            written_at = utc_now()
+            record = {
+                "schema": COMPARISON_SCHEMA, "schema_version": COMPARISON_VERSION,
+                "guided": os.fspath(guided_dir), "blind": os.fspath(blind_dir),
+                "written_at": written_at, "candidates": candidates,
+            }
+            if not valid_comparison_record(record):
+                fail("comparison produced an invalid durable record", 65)
+            events = [
+                ledger_event("signal_tune_candidate", ts=written_at, **candidate)
+                for candidate in candidates
+            ]
+            append_ledger_events(fd, events)
+            atomic_append(
+                path,
+                (json.dumps(record, separators=(",", ":"), sort_keys=True) + "\n").encode(),
+            )
+            status = "recorded"
     finally:
         close_ledger_events(fd)
-    emit({"status": "recorded", "pr": guided_pr, "candidates": len(events)})
+    emit({"status": status, "pr": guided_pr, "candidates": len(candidates)})
 
 
 def markdown_inline(value):
