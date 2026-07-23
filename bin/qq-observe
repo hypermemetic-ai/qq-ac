@@ -19,7 +19,8 @@ usage:
   qq-observe summarize [--since TS] [--until TS] [--json]
   qq-observe facts SESSION.jsonl
   qq-observe signals SESSION.jsonl
-  qq-observe validate-analysis ANALYSIS.json SESSION.jsonl [SESSION.jsonl...]
+  qq-observe validate-analysis ANALYSIS.json SESSION.jsonl [SESSION.jsonl...] \
+    --facts SESSION_PATH=FACTS_PATH [--facts SESSION_PATH=FACTS_PATH...]
 
 context options: --trace-id ID --span-id ID --parent-span-id ID --root-span-id ID
 record options:  --phase PHASE --status STATUS --source SOURCE --attribute KEY=VALUE
@@ -31,6 +32,7 @@ complete becomes ok; failed, stopped, or unresolved outcomes remain error.
 QQ_DISPATCH_RUNTIME_ROOT or ${TMPDIR:-/tmp}/pi-subagents-uid-<uid>.
 facts, signals, and validate-analysis accept Pi v3 session JSONL. Signal
 entries and unknown-entry citations are 1-based physical JSONL line numbers.
+validate-analysis requires one --facts SESSION_PATH=FACTS_PATH pair per session.
 EOF
   exit 64
 }
@@ -143,6 +145,7 @@ ANALYSIS_ROOT_CAUSE_LOCATIONS = {
     "harness-design",
 }
 ANALYSIS_CONFIDENCE = {"high": 3, "medium": 2, "low": 1}
+COST_SECONDS_TOLERANCE = 0.001
 SPAN_FIELDS = {
     "schema_version", "trace_id", "span_id", "parent_span_id", "root_span_id",
     "name", "phase", "actor", "start_time", "end_time", "duration_ms",
@@ -939,12 +942,13 @@ def session_signals(analysis):
     }
 
 
-def analysis_object(value, required, label):
+def analysis_object(value, required, label, optional=()):
     if not isinstance(value, dict):
         fail(f"analysis schema violation: {label} must be an object")
-    expected = set(required)
-    missing = expected - value.keys()
-    extra = value.keys() - expected
+    required_fields = set(required)
+    allowed_fields = required_fields | set(optional)
+    missing = required_fields - value.keys()
+    extra = value.keys() - allowed_fields
     if missing:
         fail(f"analysis schema violation: {label} missing {sorted(missing)[0]}")
     if extra:
@@ -1025,7 +1029,9 @@ def validate_analysis_shape(item):
     }
     for episode_index, episode in enumerate(episodes):
         label = f"episodes[{episode_index}]"
-        analysis_object(episode, episode_fields, label)
+        analysis_object(episode, episode_fields, label, optional={"rank"})
+        if "rank" in episode:
+            analysis_integer(episode["rank"], f"{label}.rank", minimum=1)
         analysis_string(episode["kind"], f"{label}.kind")
         if episode["kind"] not in ANALYSIS_KINDS:
             fail(f"analysis schema violation: {label}.kind is not in the taxonomy")
@@ -1076,40 +1082,193 @@ def validate_analysis_shape(item):
     return "success"
 
 
-def load_analysis(path):
+def load_json_document(path, label):
     if not path.is_file():
-        fail(f"analysis JSON is not a regular file: {path}")
+        fail(f"{label} is not a regular file: {path}")
     try:
         raw = path.read_bytes()
         text = raw.decode("utf-8")
-        item = json.loads(
+        return json.loads(
             text,
             parse_constant=lambda value: (_ for _ in ()).throw(
                 ValueError(f"invalid JSON constant: {value}")
             ),
         )
     except (OSError, UnicodeDecodeError, ValueError, RecursionError) as error:
-        fail(f"cannot read analysis JSON: {error}")
-    return item
+        fail(f"cannot read {label}: {error}")
+
+
+def load_cost_facts(path, session):
+    item = load_json_document(path, f"facts JSON for {session}")
+    prefix = f"malformed facts JSON for {session}:"
+    if not isinstance(item, dict):
+        fail(f"{prefix} top level must be an object")
+    if (
+        item.get("schema") != "qq-observe.facts"
+        or isinstance(item.get("schema_version"), bool)
+        or item.get("schema_version") != 2
+    ):
+        fail(f"{prefix} unsupported schema or schema_version")
+
+    turns = item.get("turns_by_role")
+    if not isinstance(turns, dict):
+        fail(f"{prefix} turns_by_role must be an object")
+    for role, value in turns.items():
+        if not isinstance(role, str) or isinstance(value, bool) or not isinstance(value, int) or value < 0:
+            fail(f"{prefix} turns_by_role values must be non-negative integers")
+
+    usage_records = item.get("token_usage_records")
+    if isinstance(usage_records, bool) or not isinstance(usage_records, int) or usage_records < 0:
+        fail(f"{prefix} token_usage_records must be a non-negative integer")
+    token_usage = item.get("token_usage")
+    if not isinstance(token_usage, dict):
+        fail(f"{prefix} token_usage must be an object")
+    token_total = 0
+    for field in ("input", "output"):
+        value = token_usage.get(field)
+        if value is not None and (
+            isinstance(value, bool) or not isinstance(value, int) or value < 0
+        ):
+            fail(f"{prefix} token_usage.{field} must be a non-negative integer or null")
+        if usage_records == 0 and value is not None:
+            fail(f"{prefix} zero usage records require null token_usage.{field}")
+        token_total += value or 0
+
+    wall_clock = item.get("wall_clock")
+    if not isinstance(wall_clock, dict):
+        fail(f"{prefix} wall_clock must be an object")
+    duration = wall_clock.get("duration_ms")
+    if (
+        isinstance(duration, bool)
+        or not isinstance(duration, (int, float))
+        or (isinstance(duration, float) and not math.isfinite(duration))
+        or duration < 0
+    ):
+        fail(f"{prefix} wall_clock.duration_ms must be a non-negative finite number")
+    return {
+        "turns": sum(turns.values()),
+        "tokens": token_total,
+        "tokens_verifiable": usage_records > 0,
+        "seconds": duration / 1000,
+    }
+
+
+def quotable_entry_text(item):
+    if not isinstance(item, dict) or item.get("type") != "message":
+        return ""
+    message = item.get("message")
+    if not isinstance(message, dict):
+        return ""
+    content = message.get("content")
+    if isinstance(content, str):
+        return content
+    if not isinstance(content, list):
+        return ""
+    texts = []
+    for block in content:
+        if not isinstance(block, dict):
+            continue
+        if block.get("type") == "text" and isinstance(block.get("text"), str):
+            texts.append(block["text"])
+        elif block.get("type") == "thinking" and isinstance(block.get("thinking"), str):
+            texts.append(block["thinking"])
+    return "\n".join(texts)
+
+
+def normalized_whitespace(value):
+    return re.sub(r"\s+", " ", value).strip()
+
+
+def cost_mismatch(field, expected, actual):
+    fail(f"cost.{field} mismatch: expected {expected!r}, actual {actual!r}")
+
+
+def parse_analysis_package(values):
+    if len(values) < 2 or values[0].startswith("--"):
+        fail(
+            "validate-analysis requires an analysis JSON, at least one session JSONL, "
+            "and one --facts pair per session"
+        )
+    analysis_path = Path(values[0])
+    supplied = []
+    facts_paths = {}
+    index = 1
+    while index < len(values):
+        value = values[index]
+        if value == "--facts":
+            if index + 1 >= len(values):
+                fail("--facts requires SESSION_PATH=FACTS_PATH")
+            pair = values[index + 1]
+            if "=" not in pair:
+                fail("--facts requires SESSION_PATH=FACTS_PATH")
+            session, facts_path = pair.split("=", 1)
+            if not session or not facts_path:
+                fail("--facts requires non-empty session and facts paths")
+            if session in facts_paths:
+                fail(f"duplicate --facts session: {session}")
+            facts_paths[session] = Path(facts_path)
+            index += 2
+            continue
+        if value.startswith("--"):
+            fail(f"unknown validate-analysis option: {value}")
+        supplied.append(value)
+        index += 1
+
+    if not supplied:
+        fail("validate-analysis requires at least one session JSONL")
+    if len(set(supplied)) != len(supplied):
+        fail("duplicate session JSONL path")
+    unknown_facts = set(facts_paths) - set(supplied)
+    if unknown_facts:
+        fail(f"--facts references unknown session: {sorted(unknown_facts)[0]}")
+    missing_facts = set(supplied) - set(facts_paths)
+    if missing_facts:
+        fail(f"missing --facts for session: {sorted(missing_facts)[0]}")
+    return analysis_path, supplied, facts_paths
+
+
+def validate_episode_cost(episode, facts):
+    expected_turns = 0
+    expected_tokens = 0
+    tokens_verifiable = False
+    expected_seconds = 0
+    for session in episode["sessions"]:
+        record = facts[session]
+        expected_turns += record["turns"]
+        expected_seconds += record["seconds"]
+        if record["tokens_verifiable"]:
+            tokens_verifiable = True
+            expected_tokens += record["tokens"]
+
+    cost = episode["cost"]
+    if cost["turns"] != expected_turns:
+        cost_mismatch("turns", expected_turns, cost["turns"])
+    if tokens_verifiable and cost["tokens"] != expected_tokens:
+        cost_mismatch("tokens", expected_tokens, cost["tokens"])
+    if abs(cost["seconds"] - expected_seconds) > COST_SECONDS_TOLERANCE:
+        cost_mismatch("seconds", expected_seconds, cost["seconds"])
+    expected_source = f"facts:{episode['sessions'][0]}"
+    if cost["source"] != expected_source:
+        cost_mismatch("source", expected_source, cost["source"])
 
 
 def validate_and_rank_analysis(values):
     global analysis_validation_mode
     analysis_validation_mode = True
-    if len(values) < 2 or values[0].startswith("--"):
-        fail("validate-analysis requires an analysis JSON and at least one session JSONL")
-    item = load_analysis(Path(values[0]))
+    analysis_path, supplied, facts_paths = parse_analysis_package(values)
+    item = load_json_document(analysis_path, "analysis JSON")
 
-    supplied = values[1:]
-    if len(set(supplied)) != len(supplied):
-        fail("duplicate session JSONL path")
     session_lines = {}
+    facts = {}
     for value in supplied:
         path = Path(value)
         if not path.is_file():
             fail(f"session JSONL is not a regular file: {path}")
         session_entries, _ = session_jsonl(path)
-        session_lines[value] = {entry["line"] for entry in session_entries}
+        session_lines[value] = {
+            entry["line"]: entry["item"] for entry in session_entries
+        }
+        facts[value] = load_cost_facts(facts_paths[value], value)
 
     form = validate_analysis_shape(item)
     if form == "failure":
@@ -1127,9 +1286,21 @@ def validate_and_rank_analysis(values):
             session = citation["session"]
             if session not in session_lines:
                 fail(f"citation references unknown session: {session}")
+            cited_texts = []
             for entry in citation["entries"]:
                 if entry not in session_lines[session]:
                     fail(f"citation entry {entry} does not exist in session: {session}")
+                entry_text = quotable_entry_text(session_lines[session][entry])
+                if not normalized_whitespace(entry_text):
+                    fail("citation carries no quotable text")
+                cited_texts.append(entry_text)
+            cited_text = normalized_whitespace(" ".join(cited_texts))
+            quote = normalized_whitespace(citation["quote"])
+            if not quote:
+                fail("citation quote is empty after whitespace normalization")
+            if quote not in cited_text:
+                fail("citation quote is not verbatim in the cited entries")
+        validate_episode_cost(episode, facts)
 
     ranked = sorted(
         item["episodes"],

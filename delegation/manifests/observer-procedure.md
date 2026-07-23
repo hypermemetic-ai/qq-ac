@@ -10,7 +10,7 @@ package, proposes harness improvements, and never applies a proposal.
 | Count turns, tokens, tool calls, durations, retries, and reasoning volume | Deterministic code | Emit facts; the observer never recomputes a number. |
 | Detect candidate signals | Deterministic code | Emit signals with 1-based transcript entry citations. |
 | Read context, classify episodes, find root causes, and propose remedies | Observer LLM | Make judgments only when anchored to cited package evidence. |
-| Validate citations and schema, enforce the five-episode cap, and rank | Deterministic code | Reject a broken analysis whole; rank valid episodes by the declared rule. |
+| Validate citations, facts-grounded costs, and schema; enforce the five-episode cap; and rank | Deterministic code | Reject a broken analysis whole; rank valid episodes by the declared rule. |
 
 ## Input package
 
@@ -19,6 +19,7 @@ corresponding session transcripts, the qq tool and skill inventory, and the live
 instruction corpus (including AGENTS.md, CONCEPTS.md, skills, and manifests).
 Paths in the analysis must name sessions in that package. Facts and signals are
 the numeric and candidate-discovery authority; transcripts supply cited context.
+Pass each facts file to validation as `--facts SESSION_PATH=FACTS_PATH`.
 
 ## Procedure
 
@@ -42,7 +43,8 @@ including persisted reasoning. Either create a specifically named candidate or
 add a one-line dismissal to `dropped_signals`; never call something merely
 "inefficient." Make one bounded skim for judgment-only tool-gap candidates and
 hesitation or backtracking, but retain a candidate only when package citations
-anchor it.
+anchor it. Each evidence `quote` must be verbatim from its cited entries;
+whitespace may differ only by collapsed runs.
 
 Treat `reasoning_volume` and `reasoning_contortion` as prompts to inspect whether
 a harness rule forced disproportionate or contorted work. Reasoning can explain
@@ -89,10 +91,21 @@ operator disposition. Nothing auto-applies.
 ### Phase 5 — Emit
 
 Emit only JSON conforming to `observer-analysis.schema.json`: package identity,
-zero to five episodes, one-line dropped signals, and honest limitations. Every
-numeric cost cites its `facts.json` pointer. After emission,
-`qq-observe validate-analysis` resolves citations, rejects invalid output, and
-ranks valid episodes. Findings remain proposals for the operator.
+zero to five episodes, one-line dropped signals, and honest limitations. Cost is
+fixed from the episode's `sessions`:
+
+- `turns` is the sum of every `turns_by_role` value in those sessions' facts;
+- `tokens` is the sum of `token_usage.input` and `token_usage.output`, treating
+  null fields as zero and excluding sessions with zero usage records; when no
+  episode session has usage records, only the token field is unverifiable and
+  left unchecked;
+- `seconds` is the sum of `wall_clock.duration_ms / 1000`, with validator
+  tolerance 0.001 seconds; and
+- `source` is exactly `facts:<sessions[0]>`.
+
+After emission, `qq-observe validate-analysis` resolves verbatim citations,
+grounds costs using the supplied facts, rejects invalid output, and ranks valid
+episodes. Findings remain proposals for the operator.
 
 ## Taxonomy v1
 
@@ -120,9 +133,10 @@ ranks valid episodes. Findings remain proposals for the operator.
 ## Seven hard rules
 
 1. Never compute a number; cite `facts.json`.
-2. Every emitted episode has at least one resolving evidence citation. Drop an
-   uncited candidate before emission; the validator rejects, rather than
-   salvages, an analysis containing an unresolved citation.
+2. Every emitted episode has at least one resolving evidence citation whose
+   quote is verbatim from the cited entries. Drop an uncited candidate before
+   emission; the validator rejects, rather than salvages, an analysis containing
+   an unresolved or non-verbatim citation.
 3. Emit no more than five episodes; put omitted candidates in
    `dropped_signals`.
 4. Reasoning informs root cause but is not outcome evidence; outcomes come from

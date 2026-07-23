@@ -90,6 +90,7 @@
           ]
         },
         "title": { "type": "string", "minLength": 1 },
+        "rank": { "type": "integer", "minimum": 1 },
         "sessions": {
           "type": "array",
           "minItems": 1,
@@ -122,7 +123,11 @@
             "turns": { "type": "integer", "minimum": 0 },
             "tokens": { "type": "integer", "minimum": 0 },
             "seconds": { "type": "number", "minimum": 0 },
-            "source": { "type": "string", "minLength": 1 }
+            "source": {
+              "type": "string",
+              "minLength": 1,
+              "description": "The validator requires exactly facts:<sessions[0] path> and grounds all cost fields in supplied facts JSON."
+            }
           }
         },
         "remedy": {
@@ -153,7 +158,11 @@
           "minItems": 1,
           "items": { "type": "integer", "minimum": 1 }
         },
-        "quote": { "type": "string", "maxLength": 200 }
+        "quote": {
+          "type": "string",
+          "maxLength": 200,
+          "description": "The validator additionally requires a non-empty whitespace-normalized verbatim substring of the cited entries' quotable text."
+        }
       }
     },
     "dropped_signal": {
