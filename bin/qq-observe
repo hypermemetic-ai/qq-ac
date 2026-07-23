@@ -792,7 +792,7 @@ def utc_text(value):
 
 def session_facts(analysis):
     start, end = min(analysis["observed"]), max(analysis["observed"])
-    duration = round((end - start).total_seconds() * 1000, 3)
+    duration = round((end - start).total_seconds() * 1000)
     unknown_rows = [
         {"entry": line, "shape": shape}
         for line, shape in sorted(analysis["unknown"].items())
@@ -997,7 +997,10 @@ def refuse_duplicates(values, message):
 
 
 def canonical_path(value):
-    return os.path.realpath(value)
+    try:
+        return os.path.realpath(value)
+    except (ValueError, OSError) as error:
+        fail(f"invalid path {value!r}: {error}")
 
 
 def canonical_source(value):

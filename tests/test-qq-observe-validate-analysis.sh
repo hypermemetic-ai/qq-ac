@@ -29,6 +29,18 @@ JSONL
 session_a_dot="$tmp/./session-a.jsonl"
 session_a_link="$tmp/session-a-link.jsonl"
 ln -s "$session_a" "$session_a_link"
+roundtrip_session="$tmp/roundtrip-session.jsonl"
+cat >"$roundtrip_session" <<'JSONL'
+{"type":"session","version":3,"timestamp":"2026-07-23T00:00:00.000000Z"}
+{"type":"message","timestamp":"2026-07-23T00:00:00.000500Z","message":{"role":"assistant","content":[{"type":"text","text":"half millisecond"}]}}
+JSONL
+roundtrip_facts="$tmp/roundtrip-facts.json"
+(
+  cd "$ROOT"
+  "$OBSERVE" facts "$roundtrip_session"
+) >"$roundtrip_facts"
+jq -e '.wall_clock.duration_ms == 0' "$roundtrip_facts" >/dev/null \
+  || fail 'sub-millisecond facts duration was not represented as integer milliseconds'
 
 facts_a="$tmp/facts-a.json"
 cat >"$facts_a" <<'JSON'
@@ -78,6 +90,35 @@ jq -n --arg a "$session_a" --arg b "$session_b" '
     limitations:"Fixture analysis."
   }
 ' >"$valid"
+roundtrip_analysis="$tmp/roundtrip-analysis.json"
+jq -n --arg session "$roundtrip_session" --slurpfile facts "$roundtrip_facts" '
+  {
+    schema:"qq-observer.analysis",
+    schema_version:1,
+    run:{change:"roundtrip-fixture",sessions:[$session]},
+    episodes:[{
+      kind:"waste",
+      title:"Producer consumer round trip",
+      sessions:[$session],
+      evidence:[{session:$session,entries:[2],quote:"half millisecond"}],
+      what_happened:"The generated facts validate.",
+      root_cause:"Representation compatibility.",
+      root_cause_location:"harness-design",
+      cost:{
+        turns:($facts[0].turns_by_role | to_entries | map(.value) | add),
+        tokens:(($facts[0].token_usage.input // 0) + ($facts[0].token_usage.output // 0)),
+        duration_ms:$facts[0].wall_clock.duration_ms,
+        source:("facts:" + $session)
+      },
+      remedy:{type:"process",smallest_change:"Keep the integer representation."},
+      confidence:"high",
+      confidence_why:"Producer output is validator input.",
+      recurrence_key:"producer-consumer-roundtrip"
+    }],
+    dropped_signals:[],
+    limitations:""
+  }
+' >"$roundtrip_analysis"
 
 package_args=(
   "$session_a" "$session_b"
@@ -129,6 +170,42 @@ expect_analysis_failure() {
   ' "$tmp/$name.stdout" >/dev/null || fail "$name did not emit analysis_failed JSON"
 }
 
+set +e
+python3 - "$OBSERVE" "$valid" "$session_a" "$session_b" "$facts_a" "$facts_b" \
+  >"$tmp/nul-facts-pair.stdout" 2>"$tmp/nul-facts-pair.stderr" <<'PY'
+import sys
+observe, analysis, session_a, session_b, facts_a, facts_b = sys.argv[1:]
+with open(observe, encoding="utf-8") as handle:
+    program = handle.read().rsplit("<<'PY'\n", 1)[1].rsplit("\nPY", 1)[0]
+sys.argv = [
+    observe,
+    "validate-analysis",
+    "/unused/store",
+    analysis,
+    session_a,
+    session_b,
+    "--facts",
+    session_a + "\0=" + facts_a,
+    "--facts",
+    session_b + "=" + facts_b,
+]
+exec(compile(program, observe, "exec"))
+PY
+nul_facts_status=$?
+set -e
+assert_equal 1 "$nul_facts_status" 'NUL in --facts pair did not exit 1'
+[ ! -s "$tmp/nul-facts-pair.stderr" ] \
+  || fail 'NUL in --facts pair emitted stderr instead of failure JSON'
+jq -e '
+  .schema == "qq-observer.analysis"
+  and .schema_version == 1
+  and .status == "analysis_failed"
+  and (.reason | contains("invalid path"))
+' "$tmp/nul-facts-pair.stdout" >/dev/null \
+  || fail 'NUL in --facts pair did not emit canonical-path analysis_failed JSON'
+
+expect_analysis_success producer-consumer-roundtrip "$roundtrip_analysis" \
+  "$roundtrip_session" --facts "$roundtrip_session=$roundtrip_facts"
 expect_analysis_success ranked "$valid"
 mv "$tmp/ranked.stdout" "$tmp/ranked.json"
 jq -e '
@@ -170,6 +247,30 @@ jq -e --arg canonical "$session_a" '
     | all(. == ("facts:" + $canonical)))
 ' "$tmp/canonicalized-analysis-paths.stdout" >/dev/null \
   || fail 'analysis path aliases were not emitted canonically'
+
+jq '.run.sessions[0] = ("/tmp/run" + "\u0000" + "session.jsonl")' \
+  "$valid" >"$tmp/nul-run-session.json"
+expect_analysis_failure nul-run-session "$tmp/nul-run-session.json"
+assert_file_contains "$tmp/nul-run-session.stdout" 'invalid path' \
+  'NUL in run.sessions did not fail at canonicalization'
+
+jq '.episodes[0].sessions[0] = ("/tmp/episode" + "\u0000" + "session.jsonl")' \
+  "$valid" >"$tmp/nul-episode-session.json"
+expect_analysis_failure nul-episode-session "$tmp/nul-episode-session.json"
+assert_file_contains "$tmp/nul-episode-session.stdout" 'invalid path' \
+  'NUL in episode.sessions did not fail at canonicalization'
+
+jq '.episodes[0].evidence[0].session = ("/tmp/citation" + "\u0000" + "session.jsonl")' \
+  "$valid" >"$tmp/nul-citation-session.json"
+expect_analysis_failure nul-citation-session "$tmp/nul-citation-session.json"
+assert_file_contains "$tmp/nul-citation-session.stdout" 'invalid path' \
+  'NUL in citation.session did not fail at canonicalization'
+
+jq '.episodes[0].cost.source = ("facts:/tmp/source" + "\u0000" + "session.jsonl")' \
+  "$valid" >"$tmp/nul-cost-source.json"
+expect_analysis_failure nul-cost-source "$tmp/nul-cost-source.json"
+assert_file_contains "$tmp/nul-cost-source.stdout" 'invalid path' \
+  'NUL in cost.source did not fail at canonicalization'
 
 jq '.episodes[0].evidence[0].quote = "unrelated event"' \
   "$valid" >"$tmp/bogus-quote.json"
