@@ -32,6 +32,30 @@ assert_exact_output facts "$fixture" "$FIXTURES/pi-expected-facts.json" \
 assert_exact_output signals "$fixture" "$FIXTURES/pi-expected-signals.json" \
   "$tmp/pi-signals.json"
 
+reasoning_fixture="$FIXTURES/pi-reasoning-session.jsonl"
+assert_exact_output facts "$reasoning_fixture" \
+  "$FIXTURES/pi-reasoning-expected-facts.json" "$tmp/pi-reasoning-facts.json"
+assert_exact_output signals "$reasoning_fixture" \
+  "$FIXTURES/pi-reasoning-expected-signals.json" "$tmp/pi-reasoning-signals.json"
+jq -e '
+  .schema_version == 2
+  and .reasoning == {
+    blocks:6,
+    chars_total:39999,
+    chars_max_single_message:20000,
+    top_entries:[{entry:2,chars:20000},{entry:4,chars:5000},{entry:5,chars:5000}]
+  }
+' "$tmp/pi-reasoning-facts.json" >/dev/null \
+  || fail 'reasoning facts did not preserve hand-counted block and character totals'
+jq -e '
+  .schema_version == 2
+  and .episodes == [
+    {kind:"reasoning_contortion",entries:[2,4,5]},
+    {kind:"reasoning_volume",entries:[2]}
+  ]
+' "$tmp/pi-reasoning-signals.json" >/dev/null \
+  || fail 'reasoning thresholds or consecutive-message citations changed'
+
 jq -e '
   .unknown_entries.total == 1
   and .unknown_entries.by_shape == {"pi:future_pi_entry":1}
@@ -69,6 +93,9 @@ JSONL
 jq -e '
   .token_usage == {input:null, output:null, cache_read:null, cache_write:null}
   and .tokens_unavailable == {input:1, output:1, cache_read:1, cache_write:1}
+  and .reasoning == {
+    blocks:0, chars_total:0, chars_max_single_message:0, top_entries:[]
+  }
 ' "$tmp/no-usage-facts.json" >/dev/null \
   || fail 'absent token fields were zeroed or not counted'
 

@@ -1,13 +1,14 @@
 # Observer transcript fixtures
 
 `pi-session.jsonl` is a hand-crafted, minimal transcript in the sole supported
-session format. Its expected facts were hand-counted from the JSONL,
-independently of `qq-observe`; they are the precision evidence for the
-deterministic pre-pass. The expected signal citations were also checked against
-the source lines by hand.
+session format. `pi-reasoning-session.jsonl` adds exact-size thinking blocks at
+the reasoning-volume and reasoning-contortion boundaries. Their expected facts
+were hand-counted from the JSONL independently of `qq-observe`; they are the
+precision evidence for the deterministic pre-pass. The expected signal
+citations were also checked against the source lines by hand.
 
 Entry citations are **1-based physical JSONL line numbers**. The fixtures cover
-all five signal kinds. A retry is the next tool call of the same name within 10
+all seven signal kinds. A retry is the next tool call of the same name within 10
 lines after an error. A tool-error burst is at least three error results in a
 10-line window. Operator-correction matching is deliberately mechanical and
 conservative: correction-leading words
