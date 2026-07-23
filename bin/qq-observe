@@ -1622,7 +1622,7 @@ import uuid
 command, store_file, *args = sys.argv[1:]
 HEX16 = re.compile(r"^[0-9a-f]{16}$")
 HEX32 = re.compile(r"^[0-9a-f]{32}$")
-PHASES = {"orientation", "alignment", "implementation", "review", "research", "delivery"}
+PHASES = {"orientation", "alignment", "implementation", "review", "research", "delivery", "analysis"}
 STATUS_JSON_CAP = 1024 * 1024
 # Tunable deterministic heuristics from the 2026-07-23/24 operator notes.
 REASONING_VOLUME_CHARS = 20000

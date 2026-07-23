@@ -50,6 +50,17 @@ jq -e '
   and .attributes.tool == "qq-test"
 ' "$store" >/dev/null
 
+(
+  cd "$ROOT"
+  "$OBSERVE" record \
+    --name analyze_run --phase analysis --actor observer \
+    --start 2026-07-24T10:00:00Z --end 2026-07-24T10:00:02.000Z \
+    --trace-id 33333333333333333333333333333333 \
+    --span-id 4444444444444444 --root-span-id 4444444444444444 >/dev/null
+)
+jq -e 'select(.name == "analyze_run") | .phase == "analysis" and .actor == "observer" and .duration_ms == 2000' \
+  <"$store" >/dev/null || fail 'analysis phase span was not accepted'
+
 session="$tmp/session.jsonl"
 cat >"$session" <<'JSONL'
 {"type":"session","version":3,"timestamp":"2026-07-21T11:00:00.000Z"}
