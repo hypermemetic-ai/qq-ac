@@ -695,6 +695,8 @@ def assemble(values):
             status_records[run_id] = {
                 "path": status_path, "parent": parent, "cwd": cwd_path,
                 "started": started_at,
+                "session_file": status_record.get("sessionFile"),
+                "session_dir": status_record.get("sessionDir"),
             }
 
             live_common = None
@@ -778,6 +780,56 @@ def assemble(values):
         add_session(parent, f"accountable-{identifier}", "accountable", "parent-of-delegate")
 
     scanned_jsonl = set()
+    for run_id in sorted(selected_runs):
+        record = status_records[run_id]
+        session_file_value = record["session_file"]
+        if not isinstance(session_file_value, str) or not os.path.isabs(session_file_value):
+            append_unknown(
+                unknown, record["path"],
+                "delegate sessionFile is missing or not an absolute path",
+            )
+            warnings.append(f"delegate {run_id} has no valid sessionFile")
+            continue
+        session_file = Path(os.path.realpath(session_file_value))
+        scanned_jsonl.add(session_file)
+        add_session(
+            session_file, f"delegate-{run_id}-primary", "delegate",
+            selected_runs[run_id], run_id=run_id,
+        )
+
+    for run_id in sorted(selected_runs):
+        record = status_records[run_id]
+        session_dir_value = record["session_dir"]
+        if not isinstance(session_dir_value, str) or not os.path.isabs(session_dir_value):
+            append_unknown(
+                unknown, record["path"],
+                "delegate sessionDir is missing or not an absolute path",
+            )
+            continue
+        root = Path(os.path.realpath(session_dir_value))
+        if not root.exists():
+            continue
+        if not root.is_dir():
+            append_unknown(unknown, root, "delegate sessionDir is not a directory")
+            continue
+        candidates = sorted(root.rglob("*.jsonl"), key=lambda item: os.fspath(item))
+        for index, candidate in enumerate(candidates, start=1):
+            canonical = Path(os.path.realpath(candidate))
+            if canonical in scanned_jsonl:
+                continue
+            scanned_jsonl.add(canonical)
+            if not regular_file(candidate) or candidate.is_symlink():
+                append_unknown(unknown, candidate, "JSONL candidate is not a regular file")
+                continue
+            valid, reason = pi_first_record(candidate)
+            if not valid:
+                append_unknown(unknown, candidate, reason)
+                continue
+            add_session(
+                candidate, f"delegate-{run_id}-sessiondir-{index}", "delegate",
+                selected_runs[run_id], run_id=run_id,
+            )
+
     for run_id in sorted(selected_runs):
         roots = [runtime / "runs" / run_id, async_root / run_id]
         for root in roots:

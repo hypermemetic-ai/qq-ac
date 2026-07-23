@@ -90,42 +90,56 @@ cat >"$parent_weak" <<'JSONL'
 {"type":"message","timestamp":"2026-07-20T10:00:01Z","message":{"role":"user","content":"retired feature worktree"}}
 JSONL
 make_run() {
-  local run_id="$1" cwd="$2" parent="$3"
-  mkdir -p "$runtime/async-subagent-runs/$run_id" "$runtime/runs/$run_id"
-  jq -cn --arg cwd "$cwd" --arg parent "$parent" '{
-    sessionId:$parent,cwd:$cwd,startedAt:"2026-07-20T10:00:00Z",
-    lastActivityAt:1784541600000,mode:"async",isNested:false,state:"complete"
+  local run_id="$1" cwd="$2" parent="$3" session_hash="$4"
+  local session_dir="$TMPDIR/pi-subagent-sessions/$session_hash"
+  local session_file="$session_dir/run-0/session.jsonl"
+  mkdir -p "$runtime/async-subagent-runs/$run_id" "$runtime/runs/$run_id" \
+    "$(dirname "$session_file")"
+  jq -cn --arg cwd "$cwd" --arg parent "$parent" \
+    --arg session_file "$session_file" --arg session_dir "$session_dir" '{
+    sessionId:$parent,sessionFile:$session_file,sessionDir:$session_dir,cwd:$cwd,
+    startedAt:"2026-07-20T10:00:00Z",lastActivityAt:1784541600000,
+    mode:"async",isNested:false,state:"complete"
   }' >"$runtime/async-subagent-runs/$run_id/status.json"
-  cat >"$runtime/runs/$run_id/session.jsonl" <<JSONL
+  cat >"$session_file" <<JSONL
 {"type":"session","version":3,"timestamp":"2026-07-20T10:00:00Z"}
 {"type":"message","timestamp":"2026-07-20T10:00:02Z","message":{"role":"assistant","content":[{"type":"text","text":"delegate $run_id"}],"usage":{"input":2,"output":3}}}
 JSONL
 }
-make_run strong-run "$strong_worktree" "$parent_strong"
-make_run weak-run "$worktree_root/retired" "$parent_weak"
+make_run strong-run "$strong_worktree" "$parent_strong" strong-hash
+make_run weak-run "$worktree_root/retired" "$parent_weak" weak-hash
+make_run missing-run "$strong_worktree" "$parent_strong" missing-hash
+missing_session_file="$TMPDIR/pi-subagent-sessions/missing-hash/run-0/session.jsonl"
+rm "$missing_session_file"
+mkdir -p "$TMPDIR/pi-subagent-sessions/strong-hash/async-strong-run"
+cat >"$TMPDIR/pi-subagent-sessions/strong-hash/async-strong-run/session.jsonl" <<'JSONL'
+{"type":"session","version":3,"timestamp":"2026-07-20T10:30:00Z"}
+{"type":"message","timestamp":"2026-07-20T10:30:01Z","message":{"role":"assistant","content":[{"type":"text","text":"continued strong-run"}],"usage":{"input":1,"output":2}}}
+JSONL
 printf '{"schema":"span"}\n' >"$runtime/runs/strong-run/spans.jsonl"
 mkdir -p "$runtime/async-subagent-runs/malformed-run"
 printf '{not json\n' >"$runtime/async-subagent-runs/malformed-run/status.json"
 
 "$OBSERVE" assemble --pr 41 --repo "$repo" >"$tmp/assembled-41.json"
 run_41="$XDG_STATE_HOME/qq/observer/runs/pr-41"
-jq -e --arg repo "$(realpath "$repo")" '
+jq -e --arg repo "$(realpath "$repo")" --arg missing "$missing_session_file" '
   .schema == "qq-observer.package" and .schema_version == 1
   and .pr == 41 and .branch == "feature" and .repo == $repo
   and .variant == "guided"
-  and ([.sessions[] | select(.role == "delegate" and .evidence == "live-worktree-branch")] | length) == 1
+  and ([.sessions[] | select(.role == "delegate" and .evidence == "live-worktree-branch")] | length) == 2
   and ([.sessions[] | select(.role == "delegate" and .evidence == "retired-worktree-content")] | length) == 1
   and ([.sessions[] | select(.role == "accountable" and .evidence == "parent-of-delegate")] | length) == 2
+  and ([.unknown_entries[] | select(.path == $missing and (.reason | length > 0))] | length) == 1
   and ([.unknown_entries[] | select(.path | endswith("spans.jsonl"))] | length) == 1
   and ([.unknown_entries[] | select(.path | endswith("malformed-run/status.json"))] | length) == 1
-' "$run_41/package.json" >/dev/null || fail 'strong/weak run tree was not assembled defensively'
+' "$run_41/package.json" >/dev/null || fail 'external delegate sessions were not assembled defensively'
 [ -f "$run_41/inventory.json" ] || fail 'inventory was not written'
 [ -f "$run_41/corpus/skills/fixture/SKILL.md" ] || fail 'merge-time corpus was not snapshotted'
 jq -e '.skills == [{name:"fixture",description:"Fixture skill at merge time."}]' \
   "$run_41/inventory.json" >/dev/null || fail 'skill inventory did not preserve the merge-time description'
-assert_equal 4 "$(find "$run_41/sessions" -type f | wc -l)" 'session transcript count is wrong'
-assert_equal 4 "$(find "$run_41/facts" -type f | wc -l)" 'facts count is wrong'
-assert_equal 4 "$(find "$run_41/signals" -type f | wc -l)" 'signals count is wrong'
+assert_equal 5 "$(find "$run_41/sessions" -type f | wc -l)" 'session transcript count is wrong'
+assert_equal 5 "$(find "$run_41/facts" -type f | wc -l)" 'facts count is wrong'
+assert_equal 5 "$(find "$run_41/signals" -type f | wc -l)" 'signals count is wrong'
 jq -e '[.sessions[] | has("signals")] | all' "$run_41/package.json" >/dev/null \
   || fail 'guided package omitted a session signals pointer'
 
@@ -139,9 +153,9 @@ jq -e '
   and ([.sessions[] | has("signals")] | all | not)
 ' "$blind_run_41/package.json" >/dev/null \
   || fail 'blind package manifest retained guided signal pointers'
-assert_equal 4 "$(find "$blind_run_41/sessions" -type f | wc -l)" \
+assert_equal 5 "$(find "$blind_run_41/sessions" -type f | wc -l)" \
   'blind session transcript count is wrong'
-assert_equal 4 "$(find "$blind_run_41/facts" -type f | wc -l)" \
+assert_equal 5 "$(find "$blind_run_41/facts" -type f | wc -l)" \
   'blind facts count is wrong'
 [ ! -e "$blind_run_41/signals" ] || fail 'blind package wrote a signals directory'
 [ "$blind_run_41" != "$run_41" ] || fail 'guided and blind variants shared a run directory'
