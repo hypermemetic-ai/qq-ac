@@ -3,10 +3,10 @@ id: T-149
 title: >-
   qq-footer extension — trimmed usage line, status blocklist, subscription quota
   bars
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-07-23 17:00'
-updated_date: '2026-07-23 17:03'
+updated_date: '2026-07-23 18:09'
 labels: []
 dependencies: []
 documentation:
@@ -42,3 +42,9 @@ Decision ledger:
 - [ ] #4 extensions/pi-footer.json removed; ~/.pi/agent/settings.json registers qq-footer
 - [ ] #5 tests/test-qq-footer-extension.sh green (quota parsing for both live shapes, blocklist filtering, render output) and the full native suite green
 <!-- AC:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Delivered PR #222: extensions/qq-footer.ts (built-in footer replaced: line 1 cwd (branch) • session • statuses minus {pi-lens-lsp, hunk, merge-ready}; line 2 context%/window • $cost • quota bars, model • thinking right-aligned). Quota bars for kimi-coding (5h+weekly) and openai-codex (returned windows) from live-verified endpoints; anthropic wired, hidden until auth; fetch on start + 5-min cache, non-blocking render, /qq-footer-refresh. extensions/pi-footer.json deleted. Fresh-context review found 3 material failures (HTTP/401 stale cache, code-point width, huge-width RangeError); all reproduced pre-fix, fixed, re-verified post-fix; fix-delta review ACCEPT. Native suite 24/24 + enforcement green. Residual: settings.json registration + fresh-session visual verification happen post-land (registering pre-merge would point pi at a missing file); anthropic shape unverified (no auth configured); footer test flaked twice under parallel load, 6 clean loops since.
+<!-- SECTION:FINAL_SUMMARY:END -->
