@@ -500,7 +500,7 @@ PI_CONTROL_ENTRIES = {
 
 
 def session_jsonl(path, legacy=False):
-    """Read a session once; legacy mode preserves read-session's Pi contract."""
+    """Read once; facts/signals accept BOM, while legacy preserves read-session's Pi contract."""
     entries = []
     observed = []
     header_seen = False
@@ -512,7 +512,7 @@ def session_jsonl(path, legacy=False):
                         continue
                     fail(f"malformed JSON at line {number}: blank line")
                 if legacy:
-                    item = json.loads(raw)
+                    item = json.loads(raw.decode("utf-8"))
                     if not header_seen:
                         if not isinstance(item, dict) or item.get("type") != "session" or item.get("version") != 3:
                             fail("session JSONL must begin with a type=session, version=3 header")
