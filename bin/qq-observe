@@ -685,6 +685,18 @@ def assemble(values):
     )
     merge_commit = git_text(repo, "rev-parse", f"{merge_commit}^{{commit}}",
                             label="merge-commit canonicalization")
+    landed = run_process(
+        [git_binary, "-C", os.fspath(repo), "merge-base", "--is-ancestor",
+         merge_commit, "main"],
+        "merge-commit main ancestry verification",
+    )
+    if landed.returncode != 0:
+        detail = landed.stderr.decode("utf-8", "replace").strip()
+        fail(
+            f"merge commit {merge_commit} is not an ancestor of local main"
+            f"{': ' + detail if detail else ''}",
+            65,
+        )
 
     run_name = f"pr-{pr}"
     run_dir = runs_root / run_name

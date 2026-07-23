@@ -61,6 +61,12 @@ GIT_AUTHOR_DATE=2026-07-20T13:00:00Z GIT_COMMITTER_DATE=2026-07-20T13:00:00Z \
   git -C "$repo" -c user.name=test -c user.email=test@example.invalid \
     merge -q --no-ff -m 'Merge pull request #42 from fixture/solo' solo
 merge_42="$(git -C "$repo" rev-parse HEAD)"
+git -C "$repo" switch -qc outside-main
+GIT_AUTHOR_DATE=2020-01-04T00:00:00Z GIT_COMMITTER_DATE=2020-01-04T00:00:00Z \
+  git -C "$repo" -c user.name=test -c user.email=test@example.invalid \
+    commit --allow-empty -qm 'outside main'
+outside_main="$(git -C "$repo" rev-parse HEAD)"
+git -C "$repo" switch -q main
 
 fake_gh="$tmp/gh"
 cat >"$fake_gh" <<'SH'
@@ -75,6 +81,7 @@ pr="$3"
 case "$pr" in
   41) oid="$MERGE_41"; branch=feature ;;
   42) oid="$MERGE_42"; branch=solo ;;
+  43) oid="$OUTSIDE_MAIN"; branch=outside-main ;;
   *) printf '{"state":"OPEN"}\n'; exit 0 ;;
 esac
 jq -cn --arg oid "$oid" --arg branch "$branch" '{
@@ -83,7 +90,7 @@ jq -cn --arg oid "$oid" --arg branch "$branch" '{
 SH
 chmod +x "$fake_gh"
 export QQ_GH_BIN="$fake_gh"
-export MERGE_41="$merge_41" MERGE_42="$merge_42"
+export MERGE_41="$merge_41" MERGE_42="$merge_42" OUTSIDE_MAIN="$outside_main"
 
 runtime="$TMPDIR/pi-subagents-uid-$(id -u)"
 export QQ_DISPATCH_RUNTIME_ROOT="$runtime"
@@ -128,6 +135,16 @@ JSONL
 printf '{"schema":"span"}\n' >"$runtime/runs/strong-run/spans.jsonl"
 mkdir -p "$runtime/async-subagent-runs/malformed-run"
 printf '{not json\n' >"$runtime/async-subagent-runs/malformed-run/status.json"
+
+set +e
+"$OBSERVE" assemble --pr 43 --repo "$repo" \
+  >"$tmp/outside-main.stdout" 2>"$tmp/outside-main.stderr"
+status=$?
+set -e
+assert_equal 65 "$status" 'assemble accepted a merge commit outside local main'
+assert_file_contains "$tmp/outside-main.stderr" 'not an ancestor of local main'
+[ ! -e "$XDG_STATE_HOME/qq/observer/runs/pr-43" ] \
+  || fail 'outside-main refusal left a run directory'
 
 "$OBSERVE" assemble --pr 41 --repo "$repo" >"$tmp/assembled-41.json"
 run_41="$XDG_STATE_HOME/qq/observer/runs/pr-41"
