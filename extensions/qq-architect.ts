@@ -223,58 +223,36 @@ export default function register(pi, deps = {}) {
   const setMode = deps.chmod ?? chmod;
   const remove = deps.rm ?? rm;
 
-  async function readDigest(ctx) {
+  async function readObserver(ctx, type, parse, unreadable) {
     let execution;
     try {
-      execution = await run(OBSERVE_COMMAND, ["digest"], { cwd: ctx.cwd });
+      execution = await run(OBSERVE_COMMAND, [type], { cwd: ctx.cwd });
     } catch (error) {
       const reason = error instanceof Error ? error.message : String(error);
-      ctx.ui.notify(`Cannot load observer digest: ${reason}`, "error");
+      ctx.ui.notify(`Cannot load observer ${type}: ${reason}`, "error");
       return undefined;
     }
     if (execution?.killed || execution?.code !== 0) {
       ctx.ui.notify(
-        `Cannot load observer digest: ${executionReason(execution, "qq-observe digest failed")}`,
+        `Cannot load observer ${type}: ${executionReason(execution, `qq-observe ${type} failed`)}`,
         "error",
       );
       return undefined;
     }
     try {
-      return parseDigest(execution.stdout);
+      return parse(execution.stdout);
     } catch {
-      ctx.ui.notify(
-        "Cannot load observer digest: qq-observe digest returned unreadable or incomplete Markdown.",
-        "error",
-      );
+      ctx.ui.notify(`Cannot load observer ${type}: ${unreadable}`, "error");
       return undefined;
     }
   }
 
-  async function readRounds(ctx) {
-    let execution;
-    try {
-      execution = await run(OBSERVE_COMMAND, ["rounds"], { cwd: ctx.cwd });
-    } catch (error) {
-      const reason = error instanceof Error ? error.message : String(error);
-      ctx.ui.notify(`Cannot load observer rounds: ${reason}`, "error");
-      return undefined;
-    }
-    if (execution?.killed || execution?.code !== 0) {
-      ctx.ui.notify(
-        `Cannot load observer rounds: ${executionReason(execution, "qq-observe rounds failed")}`,
-        "error",
-      );
-      return undefined;
-    }
-    try {
-      return parseRounds(execution.stdout);
-    } catch {
-      ctx.ui.notify(
-        "Cannot load observer rounds: qq-observe rounds returned unreadable JSON.",
-        "error",
-      );
-      return undefined;
-    }
+  function readDigest(ctx) {
+    return readObserver(ctx, "digest", parseDigest, "qq-observe digest returned unreadable or incomplete Markdown.");
+  }
+
+  function readRounds(ctx) {
+    return readObserver(ctx, "rounds", parseRounds, "qq-observe rounds returned unreadable JSON.");
   }
 
   pi.registerCommand("architect", {
