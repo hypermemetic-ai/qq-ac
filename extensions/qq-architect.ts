@@ -267,7 +267,11 @@ export default function register(pi, deps = {}) {
         ctx.ui.notify(`Observer round pr-${pr} is not available.`, "error");
         return;
       }
-      if (row.discussed) {
+      const blindRow = rows.find(
+        (candidate) => candidate.pr === pr && candidate.variant === "blind",
+      );
+      const completingTwin = row.discussed && blindRow !== undefined && !blindRow.discussed;
+      if (row.discussed && !completingTwin) {
         ctx.ui.notify(
           `Observer round pr-${pr} is already discussed; no append-only mark was attempted.`,
           "warning",
@@ -287,7 +291,38 @@ export default function register(pi, deps = {}) {
       }
       const runDir = roundDirectory(runsRoot, row);
       const outcomes = [];
-      if (row.failed) {
+      if (completingTwin) {
+        const confirmation = await ctx.ui.select(
+          `Observer round pr-${pr} is discussed; complete its blind twin mark?`,
+          ["mark blind twin discussed", "cancel"],
+        );
+        if (confirmation === undefined || confirmation === "cancel") {
+          ctx.ui.notify(
+            `Blind twin discussion marking for pr-${pr} was cancelled.`,
+            "warning",
+          );
+          return;
+        }
+        if (confirmation !== "mark blind twin discussed") {
+          ctx.ui.notify(`Unsupported blind twin confirmation for pr-${pr}.`, "error");
+          return;
+        }
+        try {
+          const discussed = JSON.parse(
+            await loadFile(join(runDir, "discussed.json"), "utf8"),
+          );
+          if (!Array.isArray(discussed?.outcomes)) {
+            throw new Error("outcomes are missing");
+          }
+          outcomes.push(...discussed.outcomes);
+        } catch (error) {
+          ctx.ui.notify(
+            `Cannot read discussed.json for observer round pr-${pr}: ${error instanceof Error ? error.message : String(error)}`,
+            "error",
+          );
+          return;
+        }
+      } else if (row.failed) {
         const failurePath = join(runDir, "analysis_failed.json");
         let failure;
         try {
@@ -394,7 +429,8 @@ export default function register(pi, deps = {}) {
         ];
         const blindDir = roundDirectory(runsRoot, { pr, variant: "blind" });
         if (
-          await isRegularFile(join(blindDir, "analysis.json"), inspectFile)
+          completingTwin
+          || await isRegularFile(join(blindDir, "analysis.json"), inspectFile)
           || await isRegularFile(join(blindDir, "analysis_failed.json"), inspectFile)
         ) {
           markArguments.push("--twin", blindDir);

@@ -267,11 +267,46 @@ async function testRefusalIsSurfaced() {
   assert.equal(refusal.level, "error");
 }
 
+async function testPartialTwinMarkCanBeCompleted() {
+  const run = await makeRun(20);
+  const blindRun = await makeRun(20, "blind");
+  const outcomes = [
+    { recurrence_key: "partial", verdict: "accepted", task_refs: [], note: "Keep it." },
+  ];
+  await writeFile(join(run, "discussed.json"), JSON.stringify({ outcomes }));
+  await writeFile(
+    join(blindRun, "analysis_failed.json"),
+    '{"status":"analysis_failed","reason":"blind analyst failed"}\n',
+  );
+  let captured;
+  const h = createHarness([
+    rounds([
+      row(20, { discussed: true }),
+      row(20, { variant: "blind", analyzed: false, failed: true }),
+    ]),
+    async (call) => {
+      assert.deepEqual(call.args.slice(0, 4), ["mark-discussed", "--run", run, "--outcomes"]);
+      captured = JSON.parse(await readFile(call.args[4], "utf8"));
+      assert.deepEqual(call.args.slice(5), ["--twin", blindRun]);
+      return execution('{"status":"already discussed","twin_status":"discussed"}\n');
+    },
+  ], { selects: ["mark blind twin discussed"] });
+  await invoke(h, "architect-discussed", "20");
+  assert.deepEqual(captured, outcomes);
+  assert.ok(h.selectPrompts.some(({ prompt }) => prompt.includes("complete its blind twin mark")));
+  assert.ok(h.notifications.some(({ message }) => message.includes('"twin_status":"discussed"')));
+}
+
 async function testAlreadyDiscussedAndHeadlessRefuseEarly() {
-  const discussed = createHarness([rounds([row(16, { discussed: true })])]);
+  const discussed = createHarness([
+    rounds([
+      row(16, { discussed: true }),
+      row(16, { variant: "blind", discussed: true }),
+    ]),
+  ]);
   await invoke(discussed, "architect-discussed", "16");
   assert.ok(discussed.notifications.some(({ message }) => message.includes("already discussed")));
-  assert.equal(discussed.calls.length, 1, "already-discussed round reached mark-discussed");
+  assert.equal(discussed.calls.length, 1, "fully-discussed pair reached mark-discussed");
 
   for (const command of ["architect", "architect-discussed"]) {
     const headless = createHarness([], { hasUI: false });
@@ -289,6 +324,7 @@ await testFailedKickoff();
 await testFailedRoundCanBeMarkedDiscussed();
 await testDiscussedHappyPath();
 await testRefusalIsSurfaced();
+await testPartialTwinMarkCanBeCompleted();
 await testAlreadyDiscussedAndHeadlessRefuseEarly();
 
 console.log("test-qq-architect-extension: pass");
