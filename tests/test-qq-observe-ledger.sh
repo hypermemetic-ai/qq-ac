@@ -590,8 +590,15 @@ if [ "${1:-}" != - ]; then
 fi
 script="$CRASH_TMP/comparison-crash-$$.py"
 trap 'rm -f "$script"' EXIT
-sed '/^        append_ledger_events(fd, events)$/i\
-        raise SystemExit(99)' >"$script"
+"$REAL_PYTHON3" -c '
+import sys
+source = sys.stdin.read()
+needle = '\''            status = "recorded"\n        previous, _ = read_ledger_events(fd)\n'\''
+if source.count(needle) != 1:
+    raise SystemExit("comparison record/events boundary not found")
+replacement = '\''            status = "recorded"\n            raise SystemExit(99)\n        previous, _ = read_ledger_events(fd)\n'\''
+sys.stdout.write(source.replace(needle, replacement))
+' >"$script"
 "$REAL_PYTHON3" "$script" "${@:2}"
 SH
 chmod 700 "$crash_python"
